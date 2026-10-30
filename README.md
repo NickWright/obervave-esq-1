@@ -7,8 +7,9 @@ The voice is a model of the original's voice hardware running its OS 3.5 control
 factory programs come from **your own ROM dumps**, sent to the FM-1's flash once; the firmware holds no ROM data and
 plays generated stand-in waves without them.
 
-> **Status: R1 (development).** It plays: the keys and MIDI, program select as a bank of ten, the octave. The
-> page-by-page editor, program memory and SysEx dumps come in the next steps (R2, R3).
+> **Status: R2 (development).** It plays: the keys and MIDI; programs in INT, CART A, CART B (yours, in flash) and
+> ROM (your bank's 40), shown as banks of ten; WRITE; the original's SysEx dumps in and out. The page-by-page
+> editor comes next (R3).
 
 ## Install
 
@@ -28,12 +29,22 @@ python3 tools/esq_syx.py info                                                   
 
 The bank stays in its own flash area through firmware updates. Keep it, and your dumps, out of any repository.
 
-## Playing (R1)
+## Programs over SysEx
+
+```sh
+python3 tools/esq_syx.py send bank.syx              # an all-40 dump: into INT;  a one-program dump: the edit buffer
+python3 tools/esq_syx.py dump --set int -o int.syx  # a set from the FM-1 (int, carta, cartb, rom)
+python3 tools/esq_syx.py dump --edit -o prog.syx    # the program playing
+```
+
+## Playing (R2)
 
 | Control | Does |
 | --- | --- |
 | Keys | Play (F3 to G5), velocity 100 |
-| PRESETS | Program; the screen shows its bank of ten |
+| PRESETS | Program: INT, CART A, CART B, ROM, 40 each; the screen shows its bank of ten |
+| ALGORITHM | A bank of ten up or down |
+| SAVE | WRITE: SAVE, pick the slot with PRESETS / ALGORITHM, SAVE again (any other button: cancel) |
 | OCT- / OCT+ | Octave, -3..+3 (both: 0) |
 | MIDI in (USB, TRS) | Notes, velocity, pitch bend, pressure, CC 1 wheel, 4 pedal, 7 volume, 11 XCTRL, 64 sustain, 120 / 123, program change |
 

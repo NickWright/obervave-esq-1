@@ -3,7 +3,7 @@
  * does (VC, MONO with fingered glide, the sustain pedal). The main loop talks to the audio ISR through a ring of
  * events (notes, controllers, program changes); the ISR owns the synth.
  *
- * The programs: the bank's own (the OS's 40 when the owner's bank is in flash), else the engine's 7 demos.
+ * The programs (sq_prog.h): INT, CART A, CART B in flash, and ROM: the bank's own 40, else the engine's 7 demos.
  * The waves: the generated placeholder set (esq_phbank.h, not ROM data) until the owner's bank is in flash
  * (sq_waves.h). The host build can read a bank from the file in SQ1D_BANK (tests). */
 #include "esq/esq_sq1d.h"
@@ -20,24 +20,16 @@
 
 static esq_wavebank_t sq_bank;
 static esq_synth_t sq;
-static uint32_t sq_nprog = SQ_NDEMO;           /* programs to choose from: the bank's, else the demos */
-static volatile uint32_t sq_prog;              /* the program playing (main loop writes through the ring) */
 
-static void sq_program(uint32_t n, esq_patch_t *out)
+/* the ROM programs: the bank's own (the OS's 40), else the engine's demos (sq_prog.h numbers them) */
+static uint32_t sq_rom_count(void) { return sq_bank.patches && sq_bank.npatches ? sq_bank.npatches : SQ_NDEMO; }
+static void sq_rom_program(uint32_t n, esq_patch_t *out)
 {
     if (sq_bank.patches && sq_bank.npatches) esq_patch_from_pcb(out, sq_bank.patches + ESQ_PCB_LEN * (n % sq_bank.npatches));
     else *out = ESQ_DEMO_PATCHES[n % SQ_NDEMO];
 }
-
-static void sq_program_name(uint32_t n, char *out7)   /* 6 characters + NUL */
-{
-    esq_patch_t p;
-    uint32_t i;
-    sq_program(n, &p);
-    for (i = 0; i < 6u && p.name[i]; i++) out7[i] = p.name[i];
-    for (; i < 6u; i++) out7[i] = ' ';
-    out7[6] = 0;
-}
+static esq_patch_t sq_pend;                     /* (main loop writes) the program EV_PROG hands the ISR */
+static volatile uint32_t sq_bank_changed;      /* (set by sq_set_bank) the main loop loads the program again */
 
 /* ---- main loop -> ISR: events */
 enum { EV_ON, EV_OFF, EV_CC, EV_BEND, EV_PRESS, EV_PROG, EV_PANIC };
@@ -76,14 +68,9 @@ static void sq_take_events(void)
             break;
         case EV_BEND: esq_bend(&sq, e.v); break;
         case EV_PRESS: esq_pressure(&sq, e.b); break;
-        case EV_PROG: {
-            esq_patch_t p;
-            sq_program(e.a, &p);
-            sq.patch = p;                       /* sounding notes go on with the new program, as on the ESQ-1 */
-            sq.nheld = 0;
-            sq_prog = e.a;
+        case EV_PROG:
+            sq.patch = sq_pend;                 /* sounding notes go on with the new program, as on the ESQ-1 */
             break;
-        }
         default: esq_all_off(&sq); break;
         }
     }
@@ -120,15 +107,11 @@ static uint8_t *sq_host_bank;                   /* (host) the owner's bank, read
 static int sq_set_bank(const uint8_t *img, uint32_t len)
 {
     int rc = -1, i;
-    esq_patch_t p;
     if (img && len) rc = esq_wavebank_load_const(&sq_bank, img, len);
     if (rc) (void)esq_wavebank_load_const(&sq_bank, ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
-    sq_nprog = sq_bank.patches && sq_bank.npatches ? sq_bank.npatches : SQ_NDEMO;
     for (i = 0; i < ESQ_NVOICE; i++) sq.v[i].active = 0;
     sq.nheld = 0;
-    if (sq_prog >= sq_nprog) sq_prog = 0;
-    sq_program(sq_prog, &p);
-    sq.patch = p;
+    sq_bank_changed = 1;
     return rc;
 }
 
@@ -152,9 +135,8 @@ static void sq_engine_init(void)
     }
 #endif
     if (!loaded) esq_wavebank_load_const(&sq_bank, ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
-    sq_nprog = sq_bank.patches && sq_bank.npatches ? sq_bank.npatches : SQ_NDEMO;
     esq_init(&sq, FS, &sq_bank);
     sq.volume = 127;
-    sq_program(0, &p);
+    sq_rom_program(0, &p);
     esq_set_patch(&sq, &p);
 }

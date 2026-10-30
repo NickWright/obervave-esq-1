@@ -256,6 +256,37 @@ def cmd_receive(a):
         print("esq_syx: nothing received")
 
 
+SETS = {"int": 0, "carta": 1, "cartb": 2, "rom": 3}
+
+
+def cmd_dump(a):
+    """(SQ1D) ask the FM-1 for a set (an all-40 dump) or, with --edit, the edit buffer (a one-program dump)"""
+    mido, o, i = open_ports(a, True)
+    ed = Editor(mido, o, i)
+    ed.call(99, timeout=1.0, tries=3)            # (the FM-1 answers first: a lost first message costs nothing)
+    for _ in ed.inp.iter_pending():
+        pass
+    cmd, args = (101, []) if a.edit else (100, [SETS[a.set]])
+    ed.out.send(mido.Message("sysex", data=ED + [cmd] + args))
+    end = time.time() + 10
+    while time.time() < end:
+        m = ed.inp.poll()
+        if m is None:
+            time.sleep(0.002)
+            continue
+        if m.type == "sysex" and list(m.data[:2]) == [0x0F, 0x02]:
+            raw = bytes([0xF0] + list(m.data) + [0xF7])
+            with open(a.o, "wb") as f:
+                f.write(raw)
+            ed.close()
+            for name, _, _ in programs(raw, "FM-1"):
+                print(f"  {name}")
+            print(f"esq_syx: {a.o}: {'the edit buffer' if a.edit else a.set.upper()} ({len(raw)} B)")
+            return
+    ed.close()
+    sys.exit("esq_syx: no dump from the FM-1 (SQ1D R2 or later?)")
+
+
 def cmd_send(a):
     progs = read_all(a.files)
     if a.single is not None:
@@ -263,15 +294,15 @@ def cmd_send(a):
             sys.exit(f"esq_syx: --single {a.single}: the files hold {len(progs)} programs")
         msgs, what = [single(progs[a.single - 1][1], a.channel)], f"program {progs[a.single - 1][0]}"
     elif len(progs) == 1 and not a.bank:
-        msgs, what = [single(progs[0][1], a.channel)], f"program {progs[0][0]} (to the selected ESQ track)"
+        msgs, what = [single(progs[0][1], a.channel)], f"program {progs[0][0]} (into the edit buffer)"
     else:
-        msgs, what = [bank(progs, a.channel)], f"{min(len(progs), NBANK)} programs (to U01..U40)"
+        msgs, what = [bank(progs, a.channel)], f"{min(len(progs), NBANK)} programs (into INT)"
     mido, port, _ = open_ports(a)
     with mido.open_output(port) as out:
         for m in msgs:
             out.send(mido.Message("sysex", data=list(m[1:-1])))
             time.sleep(a.delay / 1000)
-    print(f"esq_syx: sent {what} to {port}" + (" (kept in its flash once the transport stops)" if len(msgs[0]) > 300 else ""))
+    print(f"esq_syx: sent {what} to {port}")
 
 
 def main():
@@ -303,6 +334,12 @@ def main():
     p = sub.add_parser("info")
     p.add_argument("--port")
     p.set_defaults(fn=cmd_info)
+    p = sub.add_parser("dump", help="(SQ1D) get a set or the edit buffer from the FM-1 as an ESQ-1 dump")
+    p.add_argument("-o", required=True)
+    p.add_argument("--set", choices=sorted(SETS), default="int")
+    p.add_argument("--edit", action="store_true", help="the edit buffer (one program) instead of a set")
+    p.add_argument("--port")
+    p.set_defaults(fn=cmd_dump)
     p = sub.add_parser("receive")
     p.add_argument("-o", required=True)
     p.add_argument("--port")

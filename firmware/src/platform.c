@@ -133,10 +133,16 @@ static volatile uint32_t fm1_ms;                /* milliseconds since power-on (
 #define WAVES_AT 0x000C0000u                    /* (SQ1D) the owner's ESQ-1 wave bank, WV_SECT sectors in FL_DATA after the
                                                  * pattern slots (0xC0000..0xD2FFF; sq_waves.h) */
 #define WV_SECT 19u
+#define BANKS_AT 0x000D3000u                    /* (SQ1D) the program banks INT, CART A, CART B: BANK_SECT sectors each after
+                                                 * the wave bank (0xD3000..0xD8FFF), the first the 40 programs, the second
+                                                 * kept for their extension block */
+#define NBANK 3u
+#define BANK_SECT 2u
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_AT + 0x1000u) || \
                              FL_IN(off, n, BLOBS_AT, BLOBS_AT + NBLOB * 0x1000u) || FL_IN(off, n, PSECT_AT, PSECT_AT + NPSECT * 0x1000u) || \
                              FL_IN(off, n, SLOTS_AT, SLOTS_AT + NBLOB * SLOT_SECT * 0x1000u) || \
-                             FL_IN(off, n, WAVES_AT, WAVES_AT + WV_SECT * 0x1000u))
+                             FL_IN(off, n, WAVES_AT, WAVES_AT + WV_SECT * 0x1000u) || \
+                             FL_IN(off, n, BANKS_AT, BANKS_AT + NBANK * BANK_SECT * 0x1000u))
 #endif
 #include "fm1_flash.h"
 static uint8_t flash_ok;
@@ -272,6 +278,16 @@ static void wv_inval(void)                      /* the range written, read throu
     fl_inval(WAVES_AT, WV_SECT * 0x1000u);
     irq_restore(f);
 }
+#endif
+
+/* (SQ1D) program bank i (0..NBANK-1): its first sector, the settings' format (header + CRC); the FM-1 only */
+#if BOARD_SMK37
+#define NBANK 3u
+static int bank_load(uint32_t i, void *p, uint32_t n) { (void)i; (void)p; (void)n; return -1; }
+static int bank_save(uint32_t i, const void *p, uint32_t n) { (void)i; (void)p; (void)n; return -1; }
+#else
+static int bank_load(uint32_t i, void *p, uint32_t n) { return i < NBANK ? sector_load(BANKS_AT + i * BANK_SECT * 0x1000u, p, n) : -1; }
+static int bank_save(uint32_t i, const void *p, uint32_t n) { return i < NBANK ? sector_save(BANKS_AT + i * BANK_SECT * 0x1000u, p, n) : -1; }
 #endif
 
 /* blob i (0..NBLOB-1): one more sector each, the same format (OberVave: a sequencer pattern) */

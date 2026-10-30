@@ -1,17 +1,20 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SQ1D's screen (R1): the program select page as the ESQ-1 shows a bank, in a vacuum-fluorescent cyan. The
- * header, the program playing in large letters, its bank of ten in two columns of five (the ESQ-1's ten soft
- * buttons), the voices at the foot. Drawn in strips, each only when what it shows changed. */
+/* SQ1D's screen: the program select page as the ESQ-1 shows a bank, in a vacuum-fluorescent cyan. The header (the
+ * set, the octave), the program playing in large letters, its bank of ten in two columns of five (the ESQ-1's ten
+ * soft buttons), the voices at the foot. WRITE takes the program block and the bank for the slot it writes to; a
+ * message (a received dump) takes the program block for 2 s. Drawn in strips, each only when what it shows changed. */
 #define VFD RGB(110, 236, 255)                  /* lit */
 #define VFD_DIM RGB(26, 70, 82)                 /* unlit segments, rules */
 #define VFD_BG RGB(2, 10, 14)
 #define VFD_SEL_BG RGB(110, 236, 255)
 
-static uint32_t ui_prog, ui_oct_shown = 99, ui_prog_shown = 0xFFFFFFFFu;
-static uint32_t ui_nprog_shown, ui_flash_shown = 2;
 static int32_t ui_oct;
+static uint32_t ui_write;                       /* WRITE: 0 off, else 1 + the target program number */
+static uint32_t ui_shown_key = 0xFFFFFFFFu, ui_hdr_key = 0xFFFFFFFFu;
 static uint8_t ui_lv_shown[ESQ_NVOICE];
-static uint32_t ui_us_shown = 0xFFFFFFFFu;
+static uint32_t ui_us_shown = 0xFFFFFFFFu, ui_redraw;
+static char ui_msg[2][20];
+static uint32_t ui_msg_until;
 
 static void ui_fmt_u(char *s, uint32_t v)       /* v in decimal, appended */
 {
@@ -23,16 +26,33 @@ static void ui_fmt_u(char *s, uint32_t v)       /* v in decimal, appended */
     *s = 0;
 }
 static void ui_cat(char *s, const char *a) { while (*s) s++; while (*a) *s++ = *a++; *s = 0; }
+static void ui_cpy(char *d, const char *a, uint32_t n) { while (*a && n > 1u) { *d++ = *a++; n--; } *d = 0; }
 
-/* the header: name, where the programs come from, the octave */
+static void ui_say(const char *a, const char *b)
+{
+    ui_cpy(ui_msg[0], a, sizeof ui_msg[0]);
+    ui_cpy(ui_msg[1], b, sizeof ui_msg[1]);
+    ui_msg_until = fm1_ms + 2000u;
+    ui_redraw = 1;
+}
+
+/* "INT  BANK 2  PROG 3" for a program number */
+static void ui_where(char *t, uint32_t g)
+{
+    t[0] = 0;
+    ui_cat(t, SET_NAME[g / NSLOT % NSET]);
+    ui_cat(t, "  BANK ");
+    ui_fmt_u(t, g % NSLOT / 10u + 1u);
+    ui_cat(t, "  PROG ");
+    ui_fmt_u(t, g % 10u + 1u);
+}
+
 static void ui_header(void)
 {
     char t[24];
     cv_begin(240, 24, VFD_BG);
     cv_text(6, 4, &FONT_S, "SQ1D", VFD);
-    t[0] = 0;
-    ui_cat(t, sq_bank.npatches ? "ROM BANK" : "DEMO");
-    cv_text(64, 4, &FONT_S, t, VFD_DIM);
+    cv_text(64, 4, &FONT_S, ui_write ? "WRITE" : SET_NAME[sq_cur / NSLOT % NSET], ui_write ? VFD : VFD_DIM);
     t[0] = 0;
     ui_cat(t, "OCT ");
     if (ui_oct < 0) { ui_cat(t, "-"); ui_fmt_u(t, (uint32_t)-ui_oct); }
@@ -42,34 +62,43 @@ static void ui_header(void)
     cv_blit(0, 0);
 }
 
-/* the program playing: its number as the ESQ-1 counts (bank 1-4, slot 1-10) and its name */
-static void ui_program(void)
+/* the program block: the program playing (EDITED marked), WRITE's question, or a message */
+static void ui_program(int msg)
 {
-    char nm[7], t[16];
-    sq_program_name(ui_prog, nm);
+    char nm[7], t[32];
     cv_begin(240, 76, VFD_BG);
-    t[0] = 0;
-    ui_cat(t, "BANK ");
-    ui_fmt_u(t, ui_prog / 10u + 1u);
-    ui_cat(t, "  PROG ");
-    ui_fmt_u(t, ui_prog % 10u + 1u);
-    cv_text(8, 6, &FONT_S, t, VFD_DIM);
-    cv_text((240 - text_w(&FONT_L, nm)) / 2, 30, &FONT_L, nm, VFD);
+    if (msg) {
+        cv_text((240 - text_w(&FONT_S, ui_msg[0])) / 2, 16, &FONT_S, ui_msg[0], VFD);
+        cv_text((240 - text_w(&FONT_S, ui_msg[1])) / 2, 42, &FONT_S, ui_msg[1], VFD_DIM);
+    } else if (ui_write) {
+        uint32_t g = ui_write - 1u;
+        cv_text(8, 4, &FONT_S, "WRITE", VFD);
+        cv_text(64, 4, &FONT_S, sq_edit.name, VFD);
+        cv_text(8, 26, &FONT_S, "TO", VFD_DIM);
+        ui_where(t, g);
+        cv_text(40, 26, &FONT_S, t, VFD);
+        cv_text(8, 50, &FONT_S, "SAVE: YES   OTHER: NO", VFD_DIM);
+    } else {
+        ui_where(t, sq_cur);
+        if (sq_edited) ui_cat(t, "  EDITED");
+        cv_text(8, 6, &FONT_S, t, VFD_DIM);
+        ui_cpy(nm, sq_edit.name, sizeof nm);
+        cv_text((240 - text_w(&FONT_L, nm)) / 2, 30, &FONT_L, nm, VFD);
+    }
     cv_blit(0, 24);
 }
 
-/* the program's bank of ten: two columns of five, the program playing lit as the ESQ-1's cursor */
-static void ui_bank(void)
+/* a bank of ten: two columns of five, the cursor (the program playing, or WRITE's slot) lit */
+static void ui_bank(uint32_t cur)
 {
-    uint32_t b = ui_prog / 10u, k;
+    uint32_t b0 = cur / 10u * 10u, k;
     cv_begin(240, 110, VFD_BG);
     cv_rect(0, 0, 240, 1, VFD_DIM);
     for (k = 0; k < 10u; k++) {
-        uint32_t n = b * 10u + k, sel = n == ui_prog;
+        uint32_t g = b0 + k, sel = g == cur;
         int32_t x = k < 5u ? 4 : 124, y = 6 + (int32_t)(k % 5u) * 20;
         char nm[7], t[12];
-        if (n >= sq_nprog) continue;
-        sq_program_name(n, nm);
+        prog_name(g, nm);
         t[0] = 0;
         ui_fmt_u(t, k + 1u);
         if (sel) cv_rect(x - 2, y - 1, 114, 18, VFD_SEL_BG);
@@ -79,7 +108,7 @@ static void ui_bank(void)
     cv_blit(0, 100);
 }
 
-/* the foot: the eight voices' ENV4 as bars (the ESQ-1 has eight voice cards), the render time */
+/* the foot: the eight voices' ENV4 as bars (the eight voice cards), the render time */
 static void ui_voices(void)
 {
     uint32_t i;
@@ -100,18 +129,16 @@ static void ui_voices(void)
 
 static void ui_draw(int full)
 {
-    uint32_t i, changed = 0;
-    if (full) { lcd_fill(0, 0, 240, 240, VFD_BG); ui_oct_shown = 99; ui_prog_shown = 0xFFFFFFFFu; }
-    if ((uint32_t)(ui_oct + 50) != ui_oct_shown || ui_flash_shown != sq_bank.npatches) {
-        ui_oct_shown = (uint32_t)(ui_oct + 50);
-        ui_flash_shown = sq_bank.npatches;
-        ui_header();
-    }
-    if (ui_prog != ui_prog_shown || ui_nprog_shown != sq_nprog) {   /* (the bank's cursor moves with it) */
-        ui_prog_shown = ui_prog;
-        ui_nprog_shown = sq_nprog;
-        ui_program();
-        ui_bank();
+    uint32_t i, changed = 0, msg = fm1_ms < ui_msg_until, cur = ui_write ? ui_write - 1u : sq_cur;
+    uint32_t key = cur | (uint32_t)msg << 9 | (uint32_t)(ui_write != 0) << 10 | (uint32_t)sq_edited << 11;
+    uint32_t hkey = (uint32_t)(ui_oct + 8) | (cur / NSLOT) << 4 | (uint32_t)(ui_write != 0) << 8;
+    if (full) lcd_fill(0, 0, 240, 240, VFD_BG);
+    if (full || hkey != ui_hdr_key) { ui_hdr_key = hkey; ui_header(); }
+    if (full || ui_redraw || key != ui_shown_key) {
+        ui_shown_key = key;
+        ui_redraw = 0;
+        ui_program((int)msg);
+        ui_bank(cur);
     }
     for (i = 0; i < ESQ_NVOICE; i++)
         if (ui_vlevel[i] != ui_lv_shown[i]) { ui_lv_shown[i] = ui_vlevel[i]; changed = 1; }

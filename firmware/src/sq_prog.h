@@ -1,0 +1,212 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* SQ1D's program memory (R2), as the ESQ-1 keeps it: banks of 40 in four sets, numbered on screen as the ESQ-1 does
+ * (bank 1-4 of ten, program 1-10).
+ *   INT, CART A, CART B  40 programs each in the FM-1's flash (platform.c bank_load / bank_save: one sector each, the
+ *                        ESQ-1's 102-byte program format), writable. A set never stored holds the ROM's programs (INT)
+ *                        or INIT (the carts) until the first WRITE into it.
+ *   ROM                  the owner's bank's 40 (the OS's factory programs), read only; without a bank the engine's demos.
+ * The edit buffer (sq_edit) is the program playing. A program change loads it; a received one-program dump lands in
+ * it (EDITED, as on the ESQ-1); WRITE stores it into a slot. A received 40-program dump replaces INT, as on the ESQ-1.
+ *
+ * SysEx (the ESQ-1's format, esq/esq_patch.h): F0 0F 02 0c 01 <204 nibbles> F7 one program, F0 0F 02 0c 02 <8160
+ * nibbles> F7 all 40, any channel. Received a byte at a time (sq_sx_byte, from usb.c's sysex_byte through
+ * APP_SYSEX_BYTE: an all-40 dump is longer than the platform's SysEx frame) into rx.pcb; the main loop takes it when
+ * it is whole (sq_sx_poll). Sent on request through the editor protocol (sq_waves.h): 100 a set as an all-40 dump,
+ * 101 the edit buffer as a one-program dump (tools/esq_syx.py dump / get). */
+#define NSET 4u
+#define SET_ROM 3u
+#define NSLOT 40u
+#define NPROG_ALL (NSET * NSLOT)
+static const char *const SET_NAME[NSET] = {"INT", "CART A", "CART B", "ROM"};
+
+static uint8_t sq_pcb[NBANK][NSLOT][ESQ_PCB_LEN] __attribute__((section(".pool")));
+static uint32_t sq_stored;                      /* bit i: set i is in flash (else it shows its defaults) */
+static uint32_t sq_cur;                         /* the program number playing: set * 40 + slot */
+static esq_patch_t sq_edit;                     /* the edit buffer, decoded */
+static uint8_t sq_edit_pcb[ESQ_PCB_LEN];        /* .. and as its 102 bytes: the program as stored or received, every bit
+                                                 * (the engine's decoding drops a few the ESQ-1 keeps: stored, sent and
+                                                 * written from here, never re-encoded) */
+static uint8_t sq_edited;                       /* the edit buffer differs from its slot */
+
+/* a program's 102 bytes as stored: a set's from RAM, ROM's from the bank (else the demos, encoded) */
+static void prog_pcb(uint32_t g, uint8_t *pcb)
+{
+    uint32_t set = g / NSLOT % NSET, k = g % NSLOT;
+    if (set != SET_ROM) memcpy(pcb, sq_pcb[set][k], ESQ_PCB_LEN);
+    else if (sq_bank.patches && k < sq_bank.npatches) memcpy(pcb, sq_bank.patches + ESQ_PCB_LEN * k, ESQ_PCB_LEN);
+    else esq_patch_to_pcb(&ESQ_DEMO_PATCHES[k < SQ_NDEMO ? k : 0u], pcb);   /* (no bank: the demos, then INIT) */
+}
+static void prog_get(uint32_t g, esq_patch_t *p)
+{
+    uint8_t pcb[ESQ_PCB_LEN];
+    prog_pcb(g, pcb);
+    esq_patch_from_pcb(p, pcb);
+}
+static void prog_name(uint32_t g, char *out7)  /* 6 characters + NUL */
+{
+    esq_patch_t p;
+    uint32_t i;
+    prog_get(g, &p);
+    for (i = 0; i < 6u && p.name[i]; i++) out7[i] = p.name[i];
+    for (; i < 6u; i++) out7[i] = ' ';
+    out7[6] = 0;
+}
+
+static void edit_apply(void)                    /* the edit buffer to the engine */
+{
+    uint32_t f = SQ_CLI();
+    sq_pend = sq_edit;
+    SQ_STI(f);
+    sq_event(EV_PROG, 0, 0, 0);
+}
+static void prog_load(uint32_t g)
+{
+    sq_cur = g % NPROG_ALL;
+    prog_pcb(sq_cur, sq_edit_pcb);
+    esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+    sq_edited = 0;
+    edit_apply();
+}
+
+/* a set's defaults, while it was never stored: INT the ROM's programs, a cart INIT throughout */
+static void set_defaults(uint32_t set)
+{
+    uint32_t k;
+    for (k = 0; k < NSLOT; k++)
+        if (set == 0u) prog_pcb(SET_ROM * NSLOT + k, sq_pcb[set][k]);
+        else esq_patch_to_pcb(&ESQ_DEMO_PATCHES[0], sq_pcb[set][k]);
+}
+static int set_store(uint32_t set)            /* 0: in flash (the erase stalls the audio ~50 ms) */
+{
+    int rc = bank_save(set, sq_pcb[set], NSLOT * ESQ_PCB_LEN);
+    if (!rc) sq_stored |= 1u << set;
+    return rc;
+}
+
+static void banks_boot(void)
+{
+    uint32_t set;
+    for (set = 0; set < NBANK; set++)
+        if (!bank_load(set, sq_pcb[set], NSLOT * ESQ_PCB_LEN)) sq_stored |= 1u << set;
+        else set_defaults(set);
+}
+/* the wave bank changed (installed, or gone): the sets never stored follow it, and the program playing is loaded
+ * again (a ROM one is another program now) */
+static void banks_follow(void)
+{
+    uint32_t set;
+    for (set = 0; set < NBANK; set++)
+        if (!(sq_stored >> set & 1u)) set_defaults(set);
+    prog_load(sq_cur);
+}
+
+/* WRITE: the edit buffer into a writable slot, at once in flash. 0: done */
+static int prog_write(uint32_t g)
+{
+    uint32_t set = g / NSLOT % NSET, k = g % NSLOT;
+    if (set == SET_ROM) return -1;
+    memcpy(sq_pcb[set][k], sq_edit_pcb, ESQ_PCB_LEN);
+    if (set_store(set)) return -2;
+    sq_cur = g;
+    sq_edited = 0;
+    return 0;
+}
+
+/* ---- SysEx in: the ESQ-1's dumps, a byte at a time (context: the USB poll, in TIMER5 / the audio ISR) */
+enum { SX_IDLE, SX_HDR, SX_DATA, SX_SKIP };
+static struct {
+    uint8_t pcb[NSLOT][ESQ_PCB_LEN];            /* the programs as received */
+    uint16_t nib, want;
+    uint8_t st, hdr, lo, code, bad;
+    volatile uint8_t ready;                     /* 1 one program, 2 all 40, 3 a broken ESQ-1 dump: the main loop's turn */
+} rx __attribute__((section(".pool")));
+
+static void sq_sx_byte(uint32_t b)
+{
+    if (b >= 0xF8u) return;                     /* realtime may come anywhere */
+    if (b == 0xF0u) { rx.st = rx.ready ? SX_SKIP : SX_HDR; rx.hdr = 0; rx.bad = 0; return; }
+    if (b & 0x80u) {                            /* F7 or any status: the message ends */
+        if (rx.st == SX_DATA) {
+            int whole = b == 0xF7u && !rx.bad && rx.nib == rx.want;
+            RING_PUBLISH();
+            rx.ready = whole ? rx.code : 3u;
+        }
+        rx.st = SX_IDLE;
+        return;
+    }
+    switch (rx.st) {
+    case SX_HDR:
+        if ((rx.hdr == 0 && b != 0x0Fu) || (rx.hdr == 1u && b != 0x02u) || (rx.hdr == 2u && b > 0x0Fu) ||
+            (rx.hdr == 3u && b != 0x01u && b != 0x02u)) { rx.st = SX_SKIP; return; }   /* another maker's, another message */
+        if (++rx.hdr == 4u) {
+            rx.code = (uint8_t)b;
+            rx.want = (uint16_t)(b == 0x01u ? 2u * ESQ_PCB_LEN : 2u * ESQ_PCB_LEN * NSLOT);
+            rx.nib = 0;
+            rx.st = SX_DATA;
+        }
+        return;
+    case SX_DATA:
+        if (b > 0x0Fu || rx.nib >= rx.want) { rx.bad = 1; return; }
+        if (!(rx.nib & 1u)) rx.lo = (uint8_t)b;
+        else rx.pcb[rx.nib / (2u * ESQ_PCB_LEN)][(rx.nib >> 1) % ESQ_PCB_LEN] = (uint8_t)(rx.lo | b << 4);
+        rx.nib++;
+        return;
+    default:
+        return;
+    }
+}
+
+static void ui_say(const char *a, const char *b); /* (sq_ui.h) */
+
+/* main loop: a whole dump that arrived */
+static void sq_sx_poll(void)
+{
+    uint32_t r = rx.ready;
+    if (!r) return;
+    RING_PUBLISH();
+    if (r == 1u) {                              /* one program: the edit buffer, EDITED */
+        memcpy(sq_edit_pcb, rx.pcb[0], ESQ_PCB_LEN);
+        esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+        sq_edited = 1;
+        edit_apply();
+        ui_say("PROGRAM RECEIVED", "SAVE TO KEEP IT");
+    } else if (r == 2u) {                       /* all 40: INT, stored */
+        memcpy(sq_pcb[0], rx.pcb, sizeof rx.pcb);
+        ui_say("40 PROGRAMS", set_store(0) ? "INT: NOT STORED" : "INTO INT");
+        if (sq_cur / NSLOT == 0u) prog_load(sq_cur);
+    } else
+        ui_say("SYSEX DUMP", "BROKEN: IGNORED");
+    RING_PUBLISH();
+    rx.ready = 0;
+}
+
+/* ---- SysEx out (editor commands 100, 101; sq_waves.h hands them over) */
+static uint8_t sx_out[5u + 2u * ESQ_PCB_LEN * NSLOT + 1u] __attribute__((section(".pool")));
+static void sq_send_raw(const uint8_t *p, uint32_t n);   /* (sq1d.c: the device's USB, the host's file) */
+static uint32_t sx_put(uint32_t o, const uint8_t *pcb)
+{
+    uint32_t i;
+    for (i = 0; i < ESQ_PCB_LEN; i++) { sx_out[o++] = pcb[i] & 15u; sx_out[o++] = pcb[i] >> 4; }
+    return o;
+}
+static int sq_ed_more(uint32_t cmd, const uint8_t *a, uint32_t na)
+{
+    uint32_t o = 5, k;
+    sx_out[0] = 0xF0u; sx_out[1] = 0x0Fu; sx_out[2] = 0x02u; sx_out[3] = 0;
+    if (cmd == 100u && na >= 1u) {              /* a set (0 INT, 1 CART A, 2 CART B, 3 ROM): all 40 */
+        uint32_t set = a[0] % NSET;
+        sx_out[4] = 0x02u;
+        for (k = 0; k < NSLOT; k++) {
+            uint8_t pcb[ESQ_PCB_LEN];
+            prog_pcb(set * NSLOT + k, pcb);
+            o = sx_put(o, pcb);
+        }
+    } else if (cmd == 101u) {                   /* the edit buffer */
+        sx_out[4] = 0x01u;
+        o = sx_put(o, sq_edit_pcb);
+    } else
+        return 0;
+    sx_out[o++] = 0xF7u;
+    sq_send_raw(sx_out, o);
+    return 1;
+}

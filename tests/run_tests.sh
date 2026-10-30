@@ -31,6 +31,10 @@ run "R1: programs, keys, octave (tests/sq1d_r1.txt): sound comes out" sh -c \
 import wave, array; w = wave.open('$OUT/sq1d.wav'); a = array.array('h'); a.frombytes(w.readframes(w.getnframes()))
 assert max(abs(x) for x in a) > 1000, 'silent'\""
 
+# R2: WRITE into INT (flash), the ROM set and the edit buffer as ESQ-1 dumps on request, both parse
+run "R2: WRITE, dumps out (tests/sq1d_r2.txt)" sh -c "rm -f $OUT/sq1d-out.syx; sh tests/run_host.sh tests/sq1d_r2.txt | grep -q 'bank 0 saved' \
+    && python3 tools/esq_syx.py list $OUT/sq1d-out.syx | grep -c . | grep -qx 41"
+
 # the wave bank's install over SysEx (sq_waves.h) with the placeholder image: taken, CRC checked
 python3 tools/sq_waves_syx.py --placeholder "$OUT/sq_ph.syx" >/dev/null \
     && run "wave bank install (SysEx 96-99, the placeholder image)" sh -c \

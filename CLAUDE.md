@@ -31,7 +31,7 @@ NickWright/obervave-esq-1 (the name is historical). Branch `esq1` keeps the earl
 | | Work |
 | --- | --- |
 | R1 (done) | Standalone app: whole-synth engine, keys / MIDI, wave bank, program select of the bank's 40 as banks of ten |
-| R2 | Program memory: ROM 40 (read only), INT 40, CART A, CART B (40 each, flash); WRITE; ESQ-1 SysEx single / bank dumps in and out, requests |
+| R2 (done) | Program memory: ROM 40 (read only), INT 40, CART A, CART B (40 each, flash); WRITE; ESQ-1 SysEx single / bank dumps in and out, requests |
 | R3 | The page editor (below), VFD look, cursor + data entry, COMPARE, undo, INIT, copy OSC / ENV / LFO |
 | R4 | MODERN look (the same fields + envelope / LFO / wave graphics), system pages MASTER, MIDI, CONTROL, STORAGE |
 | R5 | Enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), arpeggiator, latch, chord memory, CC / NRPN for every parameter, velocity / pressure curves, MUTATE / RANDOM |
@@ -66,6 +66,26 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
   `tests/sq1d_waves.txt`.
 - `tools/build.py` / `./build.sh` -> `build/sq1d.fwsc`; CI (`.github/workflows/release.yml`, workflow_dispatch)
   builds, tests and uploads the artifact `sq1d-fwsc`.
+
+## Program memory (R2, 2026-10-30)
+
+- `firmware/src/sq_prog.h`: four sets of 40 (0 INT, 1 CART A, 2 CART B: RAM copies in `.pool`, flash via platform.c
+  `bank_load / bank_save` at `BANKS_AT` 0xD3000, 2 sectors a set (the second kept for R5's extension block); 3 ROM:
+  the bank's PTCH 40, else the 7 demos then INIT). A program number is set * 40 + slot; on screen "INT BANK 2 PROG 3".
+  A set never stored shows defaults (INT the ROM's programs, the carts INIT) and follows a new wave bank (`banks_follow`).
+- Programs are kept as their raw 102 bytes everywhere (`prog_pcb`, `sq_edit_pcb`): the engine's decode drops a few bits
+  the ESQ-1 keeps, so nothing is re-encoded (the ROM set's dump is byte-identical to the bank's PTCH, checked). R3's
+  editor must merge its changes into the raw bytes (keep the bits `esq_patch_to_pcb(from_pcb(x))` loses).
+- The edit buffer `sq_edit` + `sq_edit_pcb`, `sq_edited`; `prog_load`, `edit_apply` (EV_PROG with `sq_pend`).
+  WRITE (`prog_write`): SAVE, PRESETS / ALGORITHM pick a writable slot, SAVE stores at once (~50 ms audio stall).
+- SysEx in (`sq_sx_byte`, called for every SysEx byte by usb.c's `sysex_byte` through `APP_SYSEX_BYTE`, defined in
+  sq1d.c; host: the "sysex" script command too): one program -> the edit buffer, EDITED; all 40 -> INT, stored.
+  Out on request (editor cmds 100 set, 101 edit buffer: `sq_ed_more`, sent by `ota_wire_send`):
+  `tools/esq_syx.py dump --set int|carta|cartb|rom -o F.syx`, `--edit`. The ESQ-1's own request messages: not
+  implemented (their codes unverified).
+- Settings (`sq1d.c`): the program and the octave, saved 3 s after a change once no voice sounds.
+- Panel now: PRESETS program (all 160, wrapping), ALGORITHM a bank of ten, SAVE = WRITE, OCT- / OCT+.
+- Host: `tests/sq1d_r2.txt` (WRITE, the dumps into build/host/sq1d-out.syx), `tests/sq1d_req_*.syx`.
 
 ## The wave bank in flash (Phase 2, 2026-10-30)
 

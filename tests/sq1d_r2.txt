@@ -1,0 +1,18 @@
+# SQ1D R2: program memory. ALGORITHM a bank of ten up, PRESETS on; WRITE the program into INT bank 1 prog 3;
+# request the ROM set as an all-40 dump (build/host/sq1d-out.syx) and the edit buffer as a one-program dump.
+1000 shot
+1200 enc 1 13
+1300 enc 6 2
+1400 shot
+1500 keys 0x91
+2000 keys 0
+2200 btn 9
+2300 shot
+2400 enc 6 1
+2500 shot
+2600 btn 9
+2700 shot
+3000 sysex tests/sq1d_req_rom.syx
+3100 sysex tests/sq1d_req_edit.syx
+5000 shot
+6000 end

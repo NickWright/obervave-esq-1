@@ -93,6 +93,7 @@ static uint8_t ed_out[24];
 static uint32_t ed_n;
 static void ed_b(uint32_t v) { if (ed_n < sizeof ed_out - 1u) ed_out[ed_n++] = (uint8_t)(v & 127u); }
 static void ed_send(void);                      /* (below: the device's USB, the host's printout) */
+static int sq_ed_more(uint32_t cmd, const uint8_t *a, uint32_t na);   /* (sq_prog.h) */
 
 /* one editor command (p: the bytes after F0, without F7). 1: it was ours */
 static int sq_ed_handle(const uint8_t *p, uint32_t n)
@@ -104,8 +105,10 @@ static int sq_ed_handle(const uint8_t *p, uint32_t n)
     if (n < 4u || p[0] != 0x7Du || p[1] != 0x46u || p[2] != 0x4Cu)
         return 0;
     cmd = p[3];
-    if (cmd < 96u || cmd > 99u)
-        return 1;                               /* (another editor command: not this firmware's) */
+    if (cmd < 96u || cmd > 99u) {
+        (void)sq_ed_more(cmd, a, na);           /* (sq_prog.h: the program dumps; others are not this firmware's) */
+        return 1;
+    }
     ed_n = 0;
     ed_out[ed_n++] = 0xF0u;
     ed_b(0x7Du); ed_b(0x46u); ed_b(0x4Cu); ed_b(cmd);

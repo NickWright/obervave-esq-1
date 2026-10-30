@@ -194,6 +194,24 @@ static int slot_save(uint32_t i, const void *a, uint32_t na, const void *b, uint
 #define NPSECT 2u
 #define host_psect ((uint8_t (*)[4096])(host_store + 4096))   /* (in the settings' blob after them: the simulator keeps
                                                  * the programs with the settings) */
+/* (SQ1D) the program banks INT, CART A, CART B (platform.c bank_load / bank_save), in RAM */
+#define NBANK 3u
+static uint8_t host_bank[NBANK][4 + 4096];
+static int bank_load(uint32_t i, void *p, uint32_t n)
+{
+    if (i >= NBANK || host_bank[i][0] != 1 || n > 4096u) return -1;
+    memcpy(p, host_bank[i] + 4, n);
+    return 0;
+}
+static int bank_save(uint32_t i, const void *p, uint32_t n)
+{
+    if (i >= NBANK || n > 4096u) return -1;
+    host_bank[i][0] = 1;
+    memcpy(host_bank[i] + 4, p, n);
+    printf("%6u ms  bank %u saved (%u B)\n", fm1_ms, i, n);
+    return 0;
+}
+
 /* (SQ1D) the wave bank's store (sq_waves.h): NOR flash in RAM, erased = 0xFF, a write only clears bits. SQ1D_FLASH=path
  * keeps it in a file between runs (the device's flash through a firmware restart) */
 #define WV_SECT 19u
@@ -290,11 +308,14 @@ static void host_sysex_file(const char *path)
     int c;
     if (!f) { printf("%6u ms  sysex %s: cannot open\n", fm1_ms, path); return; }
     while ((c = fgetc(f)) != EOF) {
+#ifdef APP_SYSEX_BYTE
+        APP_SYSEX_BYTE((uint32_t)c);           /* (the app's own SysEx receiver, as usb.c's sysex_byte calls it) */
+#endif
         if (c == 0xF0) { n = 0; continue; }
         if (c == 0xF7) {
             msgs++;
             host_ed_last_n = 0;
-            if (sq_ed_handle(m, n)) {
+            if (n >= 4u && m[0] == 0x7Du && sq_ed_handle(m, n)) {
                 ours++;
                 if (host_ed_last_n > 6u && m[3] == 97u && host_ed_last[8]) bad++;   /* a WRITE's rc */
                 if (m[3] != 97u || host_ed_last_n < 6u) {
