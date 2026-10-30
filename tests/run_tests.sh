@@ -9,7 +9,14 @@ OUT=build/host
 mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
-run() { echo "== $1"; shift; "$@" || fail=1; }
+run() {                                         # (on GitHub a failure is an annotation, readable without the log)
+    name="$1"; shift
+    echo "== $name"
+    if ! "$@" > "$OUT/last.log" 2>&1; then
+        fail=1; cat "$OUT/last.log"
+        [ -n "$GITHUB_ACTIONS" ] && echo "::error title=$name::$(tail -c 900 "$OUT/last.log" | tr '\n' '|')"
+    else cat "$OUT/last.log"; fi
+}
 
 # the ESQ-1 engine's own tests (pitch, DOC, envelopes, LFOs, CVs, voices, SYNC, AM, filter, programs, glide): the float
 # model and the integer build the firmware runs, the integer one checked against the float one
