@@ -80,7 +80,7 @@ static void sq_init(void)
 static void sq_block(uint32_t p, const part_t *g)
 {
     esq_synth_t *s = &sq_part[p];
-    uint32_t want = sq_prog_src ? ((const volatile uint32_t *)sq_prog_src)[p] % sq_nprog : 0u;
+    uint32_t want = sq_prog_src ? sq_prog_src[p] % sq_nprog : 0u;   /* (one core: a word the main loop wrote) */
     if (want != sq_prog_cur[p]) {               /* sounding notes go on with the new program, as the OS's do */
         sq_program(want, &s->patch);
         sq_prog_cur[p] = want;
