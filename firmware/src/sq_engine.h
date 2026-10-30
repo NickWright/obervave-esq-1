@@ -77,9 +77,12 @@ static void sq_take_events(void)
 }
 
 static int32_t sq_l[HALF_FRAMES], sq_r[HALF_FRAMES];
+static volatile uint32_t sq_ready;              /* sq_engine_init has run: the audio starts before app_main does, and a
+                                                 * synth not set up yet (DOC period 0) would loop in the ISR for ever */
 static void sq_render(int32_t *out, uint32_t n)
 {
     uint32_t i, nv = 0;
+    if (!sq_ready) return;
     sq_take_events();
     esq_render_q(&sq, sq_l, sq_r, n);
     for (i = 0; i < n; i++) {                   /* the output stage's full scale (1 << 24) to the platform's Q15 */
@@ -139,4 +142,6 @@ static void sq_engine_init(void)
     sq.volume = 127;
     sq_rom_program(0, &p);
     esq_set_patch(&sq, &p);
+    RING_PUBLISH();
+    sq_ready = 1;
 }

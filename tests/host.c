@@ -553,6 +553,11 @@ int main(int argc, char **argv)
     if (argc > 2) read_script(argv[2]);
     if (argc > 3) frame_fps = (uint32_t)atoi(argv[3]);
     perf_open();
+    {                                           /* (as the FM-1: the audio interrupt runs before app_main has set
+                                                 * anything up; SQ1D R3's first device build hung there) */
+        static int32_t early[2u * HALF_FRAMES];
+        app_audio(early, HALF_FRAMES);
+    }
     app_main();
     return 0;
 }
