@@ -76,6 +76,11 @@ for q in 0 1; do
         && run "ESQ-1 engine (ESQ_FIXED=$q)" sh -c "cd tests && ../build/host/esq_engine_test$q"
 done
 
+# SQ1D: the wave bank's install over SysEx (sq_waves.h) with the placeholder image: taken, CRC checked
+python3 tools/sq_waves_syx.py --placeholder build/host/sq_ph.syx >/dev/null \
+    && run "SQ1D wave bank install (SysEx 96-99, the placeholder image)" sh -c \
+       "sh tests/run_host.sh tests/sq1d_waves.txt | grep -q 'sysex reply: F0 7D 46 4C 63 01'"
+
 run "installer (tools/fm1_install.py): FM-1 and SMK-37, install and the update-mode resume check the model" python3 tests/install_test.py
 
 [ "$fail" = 0 ] && echo "ALL TESTS PASSED" || echo "SOME TESTS FAILED"

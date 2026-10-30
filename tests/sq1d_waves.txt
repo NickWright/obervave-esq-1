@@ -1,0 +1,7 @@
+# SQ1D: a wave-bank install over SysEx (sq_waves.h), the placeholder bank as the test image (no ROM data):
+# build/host/sq_ph.syx from tools/sq_waves_syx.py --placeholder (tests/run_tests.sh makes it). INFO, BEGIN, the
+# WRITEs, END, INFO: the last reply must say the bank is in flash (F0 7D 46 4C 63 01 ...). Then a note plays from it.
+3000 sysex build/host/sq_ph.syx
+3500 midi 0x90 60 100
+4500 midi 0x80 60 0
+5500 end

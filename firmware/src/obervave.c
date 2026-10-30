@@ -23,6 +23,7 @@ static void app_idle(void);
 #include "obv_engine.h"
 #include "obv_seq.h"
 #include "obv_patches.h"
+#include "sq_waves.h"                          /* (SQ1D) the owner's wave bank in flash, its install over USB */
 
 static void app_audio(int32_t *out, uint32_t n)
 {
@@ -1954,6 +1955,7 @@ static void app_main(void)
 #endif
     sq_prog_src = trk_prog;                     /* (SQ1D) the tracks' programs pick their ESQ-1 programs */
     engine_init();
+    sq_waves_boot();                            /* (SQ1D) the owner's bank, if it is in flash */
     cc_map_init();
     {
         uint32_t n;

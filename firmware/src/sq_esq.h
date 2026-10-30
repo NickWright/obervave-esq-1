@@ -5,7 +5,7 @@
  *
  * The programs: the engine's 7 demos (0..6), then the bank's own (the OS's 40 when the owner's bank is loaded).
  * The waves: the generated placeholder set (esq_phbank.h, not ROM data) until the owner's bank is loaded. The host
- * build reads one from the file in SQ1D_BANK (tests); the device's comes with Phase 2's install. */
+ * build reads one from the file in SQ1D_BANK (tests); the device's is in flash (sq_waves.h: tools/esq_syx.py waves). */
 #include "esq/esq_sq1d.h"
 #include "esq/esq_engine.c"
 #include "esq/esq_waves.c"
@@ -40,6 +40,27 @@ static void sq_program_name(uint32_t n, char *out7)   /* 6 characters + NUL */
     for (i = 0; i < 6u && p.name[i]; i++) out7[i] = p.name[i];
     for (; i < 6u; i++) out7[i] = ' ';
     out7[6] = 0;
+}
+
+/* the bank: an .esqw image read in place (img, len), or (img 0) the placeholder. The voices sounding stop (their
+ * tables pointed into the old bank) and each track takes its program again. 0: img was taken. (Main loop, with the
+ * interrupts off: the ISR must never see half a bank) */
+static int sq_set_bank(const uint8_t *img, uint32_t len)
+{
+    uint32_t c, p;
+    int rc = -1;
+    if (img && len) rc = esq_wavebank_load_const(&sq_bank, img, len);
+    if (rc) (void)esq_wavebank_load_const(&sq_bank, ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
+    sq_nprog = SQ_NDEMO + (sq_bank.patches ? sq_bank.npatches : 0u);
+    for (c = 0; c < NV; c++) {
+        sq_v[c].active = 0;
+        sq_v[c].gate = 0;
+        vc[c].gate = 0;
+        vc[c].ae.stage = E_IDLE;
+        ui_vlevel[c] = 0;
+    }
+    for (p = 0; p < NPART; p++) sq_prog_cur[p] = 0xFFFFFFFFu;
+    return rc;
 }
 
 #ifdef OBV_HOST

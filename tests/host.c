@@ -194,6 +194,44 @@ static int slot_save(uint32_t i, const void *a, uint32_t na, const void *b, uint
 #define NPSECT 2u
 #define host_psect ((uint8_t (*)[4096])(host_store + 4096))   /* (in the settings' blob after them: the simulator keeps
                                                  * the programs with the settings) */
+/* (SQ1D) the wave bank's store (sq_waves.h): NOR flash in RAM, erased = 0xFF, a write only clears bits. SQ1D_FLASH=path
+ * keeps it in a file between runs (the device's flash through a firmware restart) */
+#define WV_SECT 19u
+static uint8_t host_wv[WV_SECT * 4096u];
+static void wv_map(void)
+{
+    const char *path = getenv("SQ1D_FLASH");
+    FILE *f;
+    memset(host_wv, 0xFF, sizeof host_wv);
+    if (path && *path && (f = fopen(path, "rb")) != 0) {
+        if (fread(host_wv, 1, sizeof host_wv, f) != sizeof host_wv) memset(host_wv, 0xFF, sizeof host_wv);
+        fclose(f);
+    }
+}
+static void host_wv_keep(void)
+{
+    const char *path = getenv("SQ1D_FLASH");
+    FILE *f;
+    if (path && *path && (f = fopen(path, "wb")) != 0) { fwrite(host_wv, 1, sizeof host_wv, f); fclose(f); }
+}
+static int wv_erase(uint32_t off)
+{
+    if ((off & 0xFFFu) || off >= sizeof host_wv) return -1;
+    memset(host_wv + off, 0xFF, 4096u);
+    host_wv_keep();
+    return 0;
+}
+static int wv_prog(uint32_t off, const void *p, uint32_t n)
+{
+    uint32_t i;
+    if (off + n > sizeof host_wv) return -1;
+    for (i = 0; i < n; i++) host_wv[off + i] &= ((const uint8_t *)p)[i];
+    host_wv_keep();
+    return 0;
+}
+static const uint8_t *wv_ptr(uint32_t off) { return host_wv + off; }
+static void wv_inval(void) {}
+
 static int psect_load(uint32_t i, void *p, uint32_t n)
 {
     if (i >= NPSECT || host_psect[i][0] != 1 || n > SETTINGS_MAX) return -1;
@@ -235,7 +273,45 @@ typedef struct { uint32_t t, keys; int btn; uint8_t st, d1, d2; int8_t enc, encn
  * P hit at velocity V, V 0 = let go), "T fader F V" (0..127), "T wheel W RAW" (0 pitch, 1 mod; raw ADC 0..1023),
  * "T xkey K V" (keybed key K 0..36 at V, 0 = let go: the outer keys 0..4, 32..36), "T dump" (pads and state);
  * any build: "T shot" (the screen at T -> OUT-T.ppm) */
-enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_DUMP, HS_SHOT, HS_CHECK };
+enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_DUMP, HS_SHOT, HS_CHECK, HS_SYSEX };
+/* (SQ1D) "sysex FILE": the F0..F7 messages in FILE, each to the wave bank's editor (sq_waves.h) as the USB would hand
+ * it over; each reply printed. The files are named in order; e.sb is the index */
+#define HOST_NSX 8u
+static char host_sx_path[HOST_NSX][256];
+static uint32_t host_nsx;
+static int sq_ed_handle(const uint8_t *p, uint32_t n);
+static uint8_t host_ed_last[24];
+static uint32_t host_ed_last_n;
+static void host_sysex_file(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    static uint8_t m[640];
+    uint32_t n = 0, ours = 0, msgs = 0, bad = 0;
+    int c;
+    if (!f) { printf("%6u ms  sysex %s: cannot open\n", fm1_ms, path); return; }
+    while ((c = fgetc(f)) != EOF) {
+        if (c == 0xF0) { n = 0; continue; }
+        if (c == 0xF7) {
+            msgs++;
+            host_ed_last_n = 0;
+            if (sq_ed_handle(m, n)) {
+                ours++;
+                if (host_ed_last_n > 6u && m[3] == 97u && host_ed_last[8]) bad++;   /* a WRITE's rc */
+                if (m[3] != 97u || host_ed_last_n < 6u) {
+                    uint32_t i;
+                    printf("%6u ms  sysex reply:", fm1_ms);
+                    for (i = 0; i < host_ed_last_n; i++) printf(" %02X", host_ed_last[i]);
+                    printf("\n");
+                }
+            }
+            n = 0;
+            continue;
+        }
+        if (n < sizeof m) m[n++] = (uint8_t)c;
+    }
+    fclose(f);
+    printf("%6u ms  sysex %s: %u messages, %u for the editor, %u writes refused\n", fm1_ms, path, msgs, ours, bad);
+}
 static const host_ev_t SCRIPT0[] = {
     {200, 1u << 7, -1, 0, 0, 0, -1, 0},                         /* C4 */
     {700, 1u << 7 | 1u << 11 | 1u << 14, -1, 0, 0, 0, -1, 0},   /* + E4 G4: a chord */
@@ -275,7 +351,11 @@ static void read_script(const char *path)
         else if (!strcmp(what, "xkey")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_XKEY; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "dump")) e.smk = HS_DUMP;
         else if (!strcmp(what, "check")) e.smk = HS_CHECK;   /* (SMK: KNOB BANK pressed / let go: the panel check) */
-        else if (!strcmp(what, "shot")) e.smk = HS_SHOT;   /* (any board: the screen now -> OUT-<ms>.ppm) */
+        else if (!strcmp(what, "shot")) e.smk = HS_SHOT;
+        else if (!strcmp(what, "sysex")) {
+            if (host_nsx < HOST_NSX && sscanf(line, "%*u %*s %255s", host_sx_path[host_nsx]) == 1) { e.smk = HS_SYSEX; e.sb = (uint16_t)host_nsx++; }
+            else continue;
+        }   /* (any board: the screen now -> OUT-<ms>.ppm) */
         else if (!strcmp(what, "midi")) { sscanf(line, "%*u %*s %i %u %u", (int *)&a, &b, &c); e.st = (uint8_t)a; e.d1 = (uint8_t)b; e.d2 = (uint8_t)c; }
         else continue;
         ev[n++] = e;
@@ -360,6 +440,8 @@ static void platform_poll(void)                 /* one call = one millisecond */
     while (step < script_n && script[step].t <= fm1_ms) {
         if (script[step].smk == HS_SHOT) {
             write_ppm(fm1_ms);
+        } else if (script[step].smk == HS_SYSEX) {
+            host_sysex_file(host_sx_path[script[step].sb % HOST_NSX]);
         } else if (script[step].smk) {
 #if BOARD_SMK37
             static uint32_t vel = 100;

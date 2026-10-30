@@ -39,6 +39,24 @@ Name by the user (2026-10-30): SQ1D.
 - Host: `SQ1D_BANK=path/to/esq1.esqw` loads the owner's bank (else placeholder waves). `tests/sq1d_programs.txt`
   walks 15 programs with chords. Host cost: ~+25 % wall time against OberVave's engine on an 8-voice chord.
 
+## The wave bank in flash (Phase 2, 2026-10-30)
+
+- `firmware/src/sq_waves.h`: the owner's `.esqw` in the FM-1's flash, `WAVES_AT` 0xC0000, 19 sectors (platform.c
+  `wv_*`, added to `FL_RANGE_OK`; FL_DATA after the pattern slots). 16-byte header (magic "EQWB", len, CRC32, ver 1)
+  at 0, the image from 256, read in place through XIP (`wv_map` = `fl_plain_window_init`, called once in
+  `sq_waves_boot` after `engine_init`; OberVave never mapped it before). The header is written last; boot takes the
+  bank only if its CRC holds. Firmware updates leave it alone (the loader writes the app area only).
+- Install: the Felucca / JIANT ESQ editor protocol (F0 7D 46 4C cmd .. F7, cmds 96 BEGIN, 97 WRITE, 98 END, 99 INFO),
+  so `tools/esq_syx.py waves BANK.esqw` (copied from esq1-fm1) works unchanged. `sq_ed_service` runs in
+  platform_poll before `ota_service` and takes only editor frames from usb.c's SysEx frame. `sq_set_bank` swaps the
+  bank with the interrupts off, stops the sounding voices and has every track take its program again.
+- The bank: `tools/esq1rom.py --wavelo LOW --wavehi HIGH --oslo 3p5lo.bin OUT.esqw` on the owner's computer.
+- Host: "sysex FILE" in a script feeds F0..F7 messages to the editor (replies printed); `SQ1D_FLASH=path` keeps the
+  store in a file between runs; `tools/sq_waves_syx.py` writes an install as a .syx (`--placeholder`: the generated
+  waves, for `tests/sq1d_waves.txt` in run_tests.sh). Checked on the host with the owner's bank: 75 waves, 40
+  programs, kept through a restart, a corrupted transfer refused (rc 3) and not taken.
+- SMK-37: no store (stubs, the placeholder plays).
+
 ---
 
 # OberVave

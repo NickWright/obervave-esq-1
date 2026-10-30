@@ -130,9 +130,13 @@ static volatile uint32_t fm1_ms;                /* milliseconds since power-on (
 #define SLOTS_AT 0x00099000u                    /* (3.0) the patterns of four tracks: NBLOB slots of SLOT_SECT sectors, after the
                                                  * programs in FL_DATA (0x99000..0xB8FFF) */
 #define SLOT_SECT 4u
+#define WAVES_AT 0x000C0000u                    /* (SQ1D) the owner's ESQ-1 wave bank, WV_SECT sectors in FL_DATA after the
+                                                 * pattern slots (0xC0000..0xD2FFF; sq_waves.h) */
+#define WV_SECT 19u
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_AT + 0x1000u) || \
                              FL_IN(off, n, BLOBS_AT, BLOBS_AT + NBLOB * 0x1000u) || FL_IN(off, n, PSECT_AT, PSECT_AT + NPSECT * 0x1000u) || \
-                             FL_IN(off, n, SLOTS_AT, SLOTS_AT + NBLOB * SLOT_SECT * 0x1000u))
+                             FL_IN(off, n, SLOTS_AT, SLOTS_AT + NBLOB * SLOT_SECT * 0x1000u) || \
+                             FL_IN(off, n, WAVES_AT, WAVES_AT + WV_SECT * 0x1000u))
 #endif
 #include "fm1_flash.h"
 static uint8_t flash_ok;
@@ -244,6 +248,32 @@ static int sector_save(uint32_t at, const void *p, uint32_t n)   /* p in RAM, n 
 }
 static int settings_load(void *p, uint32_t n) { return sector_load(SETTINGS_AT, p, n); }
 static int settings_save(const void *p, uint32_t n) { return sector_save(SETTINGS_AT, p, n); }
+/* (SQ1D) the wave bank's store, offsets from its start (sq_waves.h); the FM-1 only: the SMK-37 build has none */
+#if BOARD_SMK37
+#define WV_SECT 19u
+static const uint8_t wv_none[16];
+static void wv_map(void) {}
+static int wv_erase(uint32_t off) { (void)off; return -1; }
+static int wv_prog(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return -1; }
+static const uint8_t *wv_ptr(uint32_t off) { (void)off; return wv_none; }
+static void wv_inval(void) {}
+#else
+static void wv_map(void) { fl_plain_window_init(); }   /* the store read in place through XIP, unencrypted */
+static int wv_erase(uint32_t off)
+{
+    uint32_t took;
+    return flash_ok && !(off & 0xFFFu) ? fl_erase4k(WAVES_AT + off, &took) : -1;
+}
+static int wv_prog(uint32_t off, const void *p, uint32_t n) { return flash_ok ? fl_write(WAVES_AT + off, p, n) : -1; }
+static const uint8_t *wv_ptr(uint32_t off) { return fm1_xip_ptr(WAVES_AT + off); }
+static void wv_inval(void)                      /* the range written, read through XIP next: no stale cache lines */
+{
+    uint32_t f = irq_save();
+    fl_inval(WAVES_AT, WV_SECT * 0x1000u);
+    irq_restore(f);
+}
+#endif
+
 /* blob i (0..NBLOB-1): one more sector each, the same format (OberVave: a sequencer pattern) */
 static int blob_load(uint32_t i, void *p, uint32_t n) { return i < NBLOB ? sector_load(BLOBS_AT + i * 0x1000u, p, n) : -1; }
 static int blob_save(uint32_t i, const void *p, uint32_t n) { return i < NBLOB ? sector_save(BLOBS_AT + i * 0x1000u, p, n) : -1; }
@@ -412,6 +442,7 @@ static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 static volatile int32_t master_q12 = 2048;
 static void app_audio(int32_t *out, uint32_t n);
 static void app_main(void);
+static void sq_ed_service(void);                /* (SQ1D, sq_waves.h) */
 
 void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) */
 {
@@ -447,6 +478,7 @@ static void platform_poll(void)
     int32_t a;
     fm1_wdt_feed();
     usb_retry(fm1_ms);
+    sq_ed_service();                            /* (SQ1D) the wave bank's editor frames first; the rest is the updater's */
     ota_service();
     if (usb.ota_req) {
         usb.ota_req = 0;
