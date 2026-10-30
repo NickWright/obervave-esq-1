@@ -77,7 +77,7 @@ static void ui_program(int msg)
         cv_text(8, 26, &FONT_S, "TO", VFD_DIM);
         ui_where(t, g);
         cv_text(40, 26, &FONT_S, t, VFD);
-        cv_text(8, 50, &FONT_S, "SAVE: YES   OTHER: NO", VFD_DIM);
+        cv_text(8, 50, &FONT_S, "OCT+: YES    OCT-: NO", VFD_DIM);
     } else {
         ui_where(t, sq_cur);
         if (sq_edited) ui_cat(t, "  EDITED");

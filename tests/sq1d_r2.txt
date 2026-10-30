@@ -10,7 +10,7 @@
 2300 shot
 2400 enc 6 1
 2500 shot
-2600 btn 9
+2600 btn 1
 2700 shot
 3000 sysex tests/sq1d_req_rom.syx
 3100 sysex tests/sq1d_req_edit.syx

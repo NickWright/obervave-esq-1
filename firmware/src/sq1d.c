@@ -6,7 +6,7 @@
  *
  * R1: the standalone app on Dinghy's platform: the keys and MIDI play the engine, OCT- / OCT+ the octave.
  * R2: program memory (sq_prog.h): INT, CART A, CART B, ROM, as banks of ten; PRESETS a program, ALGORITHM a bank of
- *     ten; SAVE = WRITE (SAVE, PRESETS / ALGORITHM pick the slot, SAVE; any other button: no); the ESQ-1's SysEx
+ *     ten; SAVE = WRITE (SAVE, PRESETS / ALGORITHM pick the slot, OCT+ yes, OCT- no); the ESQ-1's SysEx
  *     dumps in (one program: the edit buffer; all 40: INT) and out on request. The last program and the octave are
  *     kept (settings).
  * R3: the voice pages (sq_edit.h, sq_ui_page.h), programmed as the ESQ-1: a page button, the cursor on a field
@@ -170,13 +170,15 @@ static void panel_in(void)
         if (dp) g = prog_step(g, dp, nw);
         if (db) g = prog_step(g, 10 * db, nw);
         ui_write = g + 1u;
-        if (press >> BTN_SAVE & 1u) {
+        if (press >> BTN_OCT_UP & 1u) {         /* OCT+: yes */
             int rc = prog_write(g);
             ui_write = 0;
             ui_say(rc ? "WRITE FAILED" : "WRITTEN", rc ? "FLASH" : SET_NAME[g / NSLOT % NSET]);
-        } else if (press)
+        } else if (press >> BTN_OCT_DOWN & 1u) {   /* OCT-: no */
             ui_write = 0;
-        press = 0;
+            ui_say("WRITE", "CANCELLED");
+        }
+        press = 0;                              /* (every other button waits: a stray press neither writes nor cancels) */
     } else if (held >> BTN_EDIT & 1u) {         /* EDIT held: the modifiers */
         if (press >> BTN_SEL & 1u) { ed_undo(); ui_say("UNDO", ""); edit_used = 1; }
         if (press >> BTN_HOME & 1u) { ed_init(); ui_say("INIT", "THE PLAIN PROGRAM"); edit_used = 1; }
@@ -192,8 +194,10 @@ static void panel_in(void)
         press &= ~(1u << BTN_SEL | 1u << BTN_HOME | 1u << BTN_SAVE);
     } else {
         if (dp) prog_load(prog_step(sq_cur, dp, NPROG_ALL));
-        if (press >> BTN_SAVE & 1u)             /* the slot it came from if writable, else INT's same slot */
+        if (press >> BTN_SAVE & 1u) {           /* the slot it came from if writable, else INT's same slot */
+            if (ed_comparing) ed_compare();     /* (WRITE stores the edits, never the compared program) */
             ui_write = 1u + (sq_cur / NSLOT == SET_ROM ? sq_cur % NSLOT : sq_cur);
+        }
         if (press >> BTN_SEL & 1u) ed_compare();
     }
     if (ed_pg == PG_PROG) {

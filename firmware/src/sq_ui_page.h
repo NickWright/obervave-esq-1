@@ -25,7 +25,7 @@ static void pg_header(void)
     pg_title(t);
     cv_text(6, 4, &FONT_S, t, VFD);
     ui_cpy(nm, sq_edit.name, 7);
-    if (ed_comparing) ui_cpy(t, "COMPARE", sizeof t);
+    if (ed_comparing) { t[0] = 0; ui_cat(t, "COMPARE "); ui_cat(t, nm); }
     else { t[0] = 0; ui_cat(t, nm); if (sq_edited) ui_cat(t, "*"); }
     cv_text(240 - 6 - text_w(&FONT_S, t), 4, &FONT_S, t, ed_comparing ? VFD : VFD_DIM);
     cv_rect(0, 23, 240, 1, VFD_DIM);

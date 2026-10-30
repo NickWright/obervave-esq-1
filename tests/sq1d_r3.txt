@@ -29,7 +29,7 @@
 3600 btn 8
 3700 shot
 3800 btn 9
-3900 btn 9
+3900 btn 1
 4000 keys 0
 4200 shot
 5000 end
