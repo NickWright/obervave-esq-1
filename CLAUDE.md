@@ -1,3 +1,25 @@
+# SQAVE (codename ESQ1D) — fork of OberVave
+
+This branch (`esq1`) turns OberVave into SQAVE: one 8-voice synth with the ESQ-1 voice architecture
+(3 DOC-style wave oscillators, 4-pole low-pass, DCA4, 4 envelopes, 3 LFOs), OS 3.5 control arithmetic,
+and extensions (wave scanning, AM+SYNC together, Q modulation, new LFO types, microtuning, unison).
+Everything below the line is upstream OberVave's notes and still applies to the platform, panel, sequencer and build.
+
+## Fork rules
+
+- **No ROM data in the repo or in any package.** ESQ-1 wave ROMs, OS images, dumps and anything derived from them
+  (tables, disassembly) stay out of git (`.gitignore`: `waves/`, `private/`). The firmware ships generated fallback waves;
+  the owner's dump goes to flash with the install tool, locally.
+- **No trademarks in the product:** never "Ensoniq", "ESQ-1", "ESQ" on screen, in patch names or in the release name.
+  "SQAVE" on screen and in the package; ESQ1D only as the internal codename; "inspired by" in docs only.
+- Package identity `FM-1_97XY` (`FM-1_9700` a dev build), so the Firmware Hub never confuses it with OberVave (`FM-1_95XY`).
+- FM-1 only for now; the SMK-37 build is untouched upstream code.
+- Two UIs over one parameter table: MODERN (default) and VFD (2x40 dot-matrix look, own 5x7 font). GLOBAL > UI STYLE.
+- Program format: stock ESQ-1 program fields first (SysEx-compatible with real units and esqlib), an extension block
+  for the new parameters, reserved up front.
+
+---
+
 # OberVave
 
 A firmware for the M-VAVE FM-1: ONE polyphonic analog-style synth in the spirit of the classic 8-voice American

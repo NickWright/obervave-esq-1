@@ -79,7 +79,7 @@ static void fm1_led_key_glow(uint32_t id, int on)   /* as fm1_led_key, the dim l
 #if BOARD_SMK37
 #define FELUCCA_ID SMK_MODEL "_9500"            /* SMK-37 Pro_95XY (Elite, MKE-P37: SMK_MODEL), tools/build.py */
 #else
-#define FELUCCA_ID "FM-1_9500"                  /* package identity: 95XY = OberVave X.Y, 9500 a dev build (tools/build.py) */
+#define FELUCCA_ID "FM-1_9700"                  /* package identity: 97XY = SQAVE X.Y, 9700 a dev build (tools/build.py) */
 #endif
 #endif
 #ifndef APP_VER

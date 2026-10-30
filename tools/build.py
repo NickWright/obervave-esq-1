@@ -56,9 +56,9 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_9500"               # OberVave: 95XY for X.Y, its own (3.0 was 950, shared). Your fork: pick your own
+PRODUCT = "FM-1_9700"               # SQAVE (ESQ1D): 97XY for X.Y, 9700 a dev build. OberVave upstream uses 95XY
 BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --board
-BOARD_PREFIX = {"fm1": "FM-1_95", "smk37": "SMK-37 Pro_95"}   # identity: prefix + major + minor (00: a dev build; the loader is ota-FM-1_900 whatever this is)
+BOARD_PREFIX = {"fm1": "FM-1_97", "smk37": "SMK-37 Pro_97"}   # identity: prefix + major + minor (00: a dev build; the loader is ota-FM-1_900 whatever this is)
 BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}       # the FM-1 build gets no new flag (byte-identical)
 # smk37: the keyboard's model name (MODEL env or --model); one hardware, three names. pro adds no flag
 MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}
