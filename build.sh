@@ -1,9 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-# Build OberVave (see README.md).
+# Build SQ1D (see README.md).
 #   ./build.sh [--release X.Y] [--board fm1|smk37] [--model pro|elite|mke]
-#   BOARD            target board: fm1 (default) or smk37 (M-Vave SMK-37 -> build/obervave-smk37.fwsc, SMK37.md)
+#   BOARD            target board: fm1 (default) or smk37 (M-Vave SMK-37 -> build/sq1d-smk37.fwsc, SMK37.md)
 #   MODEL            smk37: pro (default), elite or mke: the model name the keyboard reports
 #   JIELI_TOOLCHAIN  JieLi Linux toolchain (default: ~/.jieli/toolchain)
 #   AC79_SDK         JieLi AC79 SDK checkout (default: ~/fw-AC79_AIoT_SDK)

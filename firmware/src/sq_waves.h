@@ -111,8 +111,7 @@ static int sq_ed_handle(const uint8_t *p, uint32_t n)
     ed_b(0x7Du); ed_b(0x46u); ed_b(0x4Cu); ed_b(cmd);
     switch (cmd) {
     case 96:
-        ctl_panic = 1;                          /* (the erases stall the audio a moment: nothing should hang on) */
-        (void)wv_take(0);
+        (void)wv_take(0);                       /* (every voice stops: the erases stall the audio a moment) */
         rc = wv_erase(0) ? 2u : 0u;
         wv_tx = !rc;
         ed_b(rc);

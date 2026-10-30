@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-"""Build OberVave (on Felucca / SLOOP's platform): the app, the update loader and an installable .fwsc package.
+"""Build SQ1D (on Felucca / SLOOP's platform): the app, the update loader and an installable .fwsc package.
 
   tools/build.py [--release X.Y[-suffix]] [--board fm1|smk37] [--model pro|elite|mke]
 
-Outputs in build/: obervave.bin (app), loader/ota.bin (update loader),
-obervave.fwsc (package). See README.md for the toolchain and the SDK.
+Outputs in build/: sq1d.bin (app), loader/ota.bin (update loader),
+sq1d.fwsc (package). See README.md for the toolchain and the SDK.
 
 BOARD=smk37 (or --board smk37) builds for the M-Vave SMK-37 (SMK37.md): -DBOARD_SMK37=1 for the app and the loader,
 identity SMK-37 Pro_950 (release X.Y: SMK-37 Pro_95Y, as the FM-1's FM-1_95Y), the SMK flash layout (fm1pkg_make.py,
-app slot 0x97400), the package build/obervave-smk37.fwsc (obervave-X.Y-smk37.fwsc for a release). MODEL=elite / mke
+app slot 0x97400), the package build/sq1d-smk37.fwsc (sq1d-X.Y-smk37.fwsc for a release). MODEL=elite / mke
 (or --model) with smk37: the same build under the SMK-37 Elite's or the MKE-P37's model name (identity SMK-37
 Elite_95Y / MKE-P37_95Y, the loader's and the update record's name too; -DSMK_MODEL), so M-Vave's updater still takes
-that unit's factory package: obervave-smk37-elite.fwsc, -mke.fwsc. The default stays the FM-1, built exactly as before.
+that unit's factory package: sq1d-smk37-elite.fwsc, -mke.fwsc. The default stays the FM-1, built exactly as before.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -56,7 +56,7 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_9700"               # SQAVE (ESQ1D): 97XY for X.Y, 9700 a dev build. OberVave upstream uses 95XY
+PRODUCT = "FM-1_9700"               # SQ1D: 97XY for X.Y, 9700 a dev build (check the hub before a release: 97N was zp12)
 BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --board
 BOARD_PREFIX = {"fm1": "FM-1_97", "smk37": "SMK-37 Pro_97"}   # identity: prefix + major + minor (00: a dev build; the loader is ota-FM-1_900 whatever this is)
 BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}       # the FM-1 build gets no new flag (byte-identical)
@@ -176,9 +176,9 @@ def build_app():
     cmds = [("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
             ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
             ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
-            ("cc", *flags, "-c", FW / "src" / "obervave.c", "-o", OUT / "obervave.o")]
+            ("cc", *flags, "-c", FW / "src" / "sq1d.c", "-o", OUT / "sq1d.o")]
     tc_all(*cmds)
-    elf = OUT / "obervave.elf"
+    elf = OUT / "sq1d.elf"
     ld = FW / "app.ld"
     if APP_SLOT != 0x8DFBC:          # another board's app slot (SMK-37): the same script, its XIP length
         txt = ld.read_text()
@@ -187,7 +187,7 @@ def build_app():
         ld = OUT / "app.ld"
         ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#X}".replace("0X", "0x")))
     tc("pi32v2/bin/ld", "--gc-sections", "-e", "_start", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o",
-       OUT / "fm1_isr.o", OUT / "obervave.o", "-o", elf)
+       OUT / "fm1_isr.o", OUT / "sq1d.o", "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
@@ -196,7 +196,7 @@ def build_app():
                                ("common/bin/objdump", "-t", elf),
                                ("common/bin/objdump", "-d", elf),
                                ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
-    (OUT / "obervave.dis").write_text(dis)
+    (OUT / "sq1d.dis").write_text(dis)
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
@@ -213,7 +213,7 @@ def build_app():
             img += b"\xff" * (load - APP_XIP - len(img))
             img += blob
     img += b"\xff" * (-len(img) % 4)
-    (OUT / "obervave.bin").write_bytes(img)
+    (OUT / "sq1d.bin").write_bytes(img)
     return bytes(img), syms, dis, rt
 
 
@@ -320,14 +320,14 @@ def main():
         BOARD_PREFIX[BOARD] = BOARD_PREFIX[BOARD].replace(MODELS["pro"], MODELS[model])
         PRODUCT = BOARD_PREFIX[BOARD] + "00"
         suffix += "-" + model
-    name = f"obervave{suffix}.fwsc"
+    name = f"sq1d{suffix}.fwsc"
     if a.release:                   # one digit each: the identity has room for two (X.Y; a .Z only in the text)
         m = re.fullmatch(r"(\d)\.(\d)(\.\d)?(-[A-Za-z0-9]+)?", a.release)
         if not m:
             raise SystemExit(f"--release {a.release}: use X.Y, X.Y.Z or X.Y-suffix, one digit each")
         PRODUCT = BOARD_PREFIX[BOARD] + m[1] + m[2]
         VERSION = m[1] + "." + m[2] + (m[3] or "")
-        name = f"obervave-{a.release}{suffix}.fwsc"
+        name = f"sq1d-{a.release}{suffix}.fwsc"
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:
@@ -348,7 +348,7 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
-    print(f"app      {OUT / 'obervave.bin'}  {len(img)} B")
+    print(f"app      {OUT / 'sq1d.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}" + (f", board {BOARD}" if BOARD != "fm1" else ""))
     return 0

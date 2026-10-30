@@ -12,7 +12,7 @@
  *   settings            one 4 KiB flash sector with a CRC (settings_load / settings_save)
  *   crash screen        the PC of a fault, then a reboot
  *
- * The app (obervave.c) includes this file first and supplies:
+ * The app (sq1d.c) includes this file first and supplies:
  *   static void app_audio(int32_t *out, uint32_t n)   audio ISR: n stereo frames, L R L R, Q15 (+-32767), out is zero
  *   static void app_main(void)                        never returns; calls platform_poll() often (every few ms)
  */
@@ -73,7 +73,7 @@ static void fm1_led_key_glow(uint32_t id, int on)   /* as fm1_led_key, the dim l
 #include "bootguard.h"
 
 #ifndef APP_NAME
-#define APP_NAME "OBERVAVE"
+#define APP_NAME "SQ1D"
 #endif
 #ifndef FELUCCA_ID
 #if BOARD_SMK37

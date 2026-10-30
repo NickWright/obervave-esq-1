@@ -1,0 +1,14 @@
+# SQ1D R1: PRESETS steps the programs, the keys play a chord, OCT+ shifts an octave. Screens after each change.
+1000 shot
+1500 enc 6 12
+1600 shot
+2000 keys 0x91
+2100 shot
+3000 keys 0
+3500 enc 6 -3
+3600 btn 1
+3700 shot
+4000 keys 0x2244
+5000 keys 0
+5100 shot
+6500 end

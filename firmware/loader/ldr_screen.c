@@ -11,7 +11,7 @@
  * polled: the panel's ~0.3 s init would leave the host's enumeration unanswered). FM-1 only (the SMK-37's stays dark).
  * LDR_NAME / LDR_COLOUR: the firmware's name (at most 9 letters at size 4, more get smaller) and colour (RGB565). */
 #ifndef LDR_NAME
-#define LDR_NAME "OBERVAVE"
+#define LDR_NAME "SQ1D"
 #endif
 #ifndef LDR_COLOUR
 #define LDR_COLOUR 0x3C1Du               /* OberVave's blue, #3C82EB */

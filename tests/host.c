@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* A fake FM-1 on a computer: the app (firmware/src/obervave.c) runs unchanged on it. platform.c includes
+/* A fake FM-1 on a computer: the app (firmware/src/sq1d.c) runs unchanged on it. platform.c includes
  * this file instead of the hardware when OBV_HOST is set. A script presses keys over time; out come
  * the screen (PPM, at the times SHOT asks) and the sound (WAV, as the FM-1 sends it over USB).
  *
  *   mkdir -p build/host
- *   cc -O2 -Wall -DOBV_HOST -Ifirmware/src -Ifirmware/gen -o build/host/obervave firmware/src/obervave.c
- *   build/host/obervave build/host/obervave        (-> build/host/obervave.wav, build/host/obervave-<ms>.ppm)
- *   build/host/obervave OUT script.txt [FPS]    (your own script; with FPS: OUT-NNNNN.ppm, a frame every 1/FPS s:
+ *   cc -O2 -Wall -DOBV_HOST -Ifirmware/src -Ifirmware/gen -o build/host/sq1d firmware/src/sq1d.c
+ *   build/host/sq1d build/host/sq1d        (-> build/host/sq1d.wav, build/host/sq1d-<ms>.ppm)
+ *   build/host/sq1d OUT script.txt [FPS]    (your own script; with FPS: OUT-NNNNN.ppm, a frame every 1/FPS s:
  *                                             a film of your firmware, e.g. ffmpeg -r 30 -i OUT-%05d.ppm ...)
  *
  * Change SCRIPT below to try your own app. */
@@ -24,7 +24,7 @@
 #endif
 
 #ifndef APP_NAME
-#define APP_NAME "OBERVAVE"
+#define APP_NAME "SQ1D"
 #endif
 #ifndef APP_VER
 #define APP_VER "0.0"
@@ -366,7 +366,7 @@ static void read_script(const char *path)
     script_n = n;
 }
 
-static const char *host_out = "build/host/obervave";
+static const char *host_out = "build/host/sq1d";
 static int16_t *wav;
 static uint32_t wav_n;
 
