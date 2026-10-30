@@ -158,20 +158,22 @@ def pack7(b):
 class Editor:
     def __init__(self, mido, out_name, in_name):
         self.mido, self.out, self.inp = mido, mido.open_output(out_name), mido.open_input(in_name)
+        time.sleep(0.3)   # (SQ1D) CoreMIDI may drop a message sent just after opening (as tools/fm1_install.py)
 
-    def call(self, cmd, args=(), timeout=3.0):
-        for m in self.inp.iter_pending():
-            pass
-        self.out.send(self.mido.Message("sysex", data=ED + [cmd] + list(args)))
-        end = time.time() + timeout
-        while time.time() < end:
-            m = self.inp.poll()
-            if m is None:
-                time.sleep(0.001)
-                continue
-            d = list(m.data) if m.type == "sysex" else []
-            if d[:4] == ED + [cmd]:
-                return d[4:]
+    def call(self, cmd, args=(), timeout=3.0, tries=1):
+        for _ in range(tries):
+            for m in self.inp.iter_pending():
+                pass
+            self.out.send(self.mido.Message("sysex", data=ED + [cmd] + list(args)))
+            end = time.time() + timeout
+            while time.time() < end:
+                m = self.inp.poll()
+                if m is None:
+                    time.sleep(0.001)
+                    continue
+                d = list(m.data) if m.type == "sysex" else []
+                if d[:4] == ED + [cmd]:
+                    return d[4:]
         sys.exit(f"esq_syx: no answer from the FM-1 to command {cmd} (an ESQ firmware of v6.5 or later?)")
 
     def close(self):
@@ -193,6 +195,7 @@ def cmd_waves(a):
         sys.exit(f"esq_syx: {a.file}: {len(img)} bytes, more than the 77568 the FM-1 keeps for it")
     mido, o, i = open_ports(a, True)
     ed = Editor(mido, o, i)
+    ed.call(99, timeout=1.0, tries=3)   # (SQ1D) the FM-1 answers first: a lost first message costs nothing
     r = ed.call(96)
     if r[:1] != [0]:
         sys.exit("esq_syx: BEGIN " + RC.get(r[0] if r else 1, "failed"))
@@ -217,7 +220,7 @@ def cmd_waves(a):
 def cmd_info(a):
     mido, o, i = open_ports(a, True)
     ed = Editor(mido, o, i)
-    r = ed.call(99)
+    r = ed.call(99, timeout=1.0, tries=3)
     ed.close()
     if r[0]:
         print(f"wave bank: {r[1]} waves, {r[2]} programs, {r[3] | r[4] << 7 | r[5] << 14} B")
