@@ -1,0 +1,35 @@
+# SQ1D R3: the voice pages. A chord held while: EDIT (OSC 1), the cursor to WAVE, the data slider two waves on;
+# OSC 2 by EDIT again; FX to DCA 1; ENV 1 T4 by knob; EDIT held + key 7 (FILTER), FREQ down by knob 1; COMPARE on and
+# off; UNDO; HOME; WRITE into INT.
+1000 keys 0x91
+1100 btn 6
+1200 enc 0 3
+1300 enc 1 2
+1400 shot
+1500 btn 6
+1600 shot
+1700 btn 2
+1800 btn 4
+1900 enc 0 5
+2000 enc 5 -20
+2100 shot
+2200 btndown 6
+2300 keys 0x40
+2400 btnup 6
+2500 keys 0x91
+2600 enc 2 -40
+2700 shot
+2800 btn 3
+2900 shot
+3000 btn 3
+3100 btndown 6
+3200 btn 3
+3300 btnup 6
+3400 shot
+3600 btn 8
+3700 shot
+3800 btn 9
+3900 btn 9
+4000 keys 0
+4200 shot
+5000 end

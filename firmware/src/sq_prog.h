@@ -52,6 +52,7 @@ static void prog_name(uint32_t g, char *out7)  /* 6 characters + NUL */
     out7[6] = 0;
 }
 
+static void ed_track_lost(void);                /* (sq_edit.h) */
 static void edit_apply(void)                    /* the edit buffer to the engine */
 {
     uint32_t f = SQ_CLI();
@@ -64,6 +65,7 @@ static void prog_load(uint32_t g)
     sq_cur = g % NPROG_ALL;
     prog_pcb(sq_cur, sq_edit_pcb);
     esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+    ed_track_lost();
     sq_edited = 0;
     edit_apply();
 }
@@ -167,6 +169,7 @@ static void sq_sx_poll(void)
     if (r == 1u) {                              /* one program: the edit buffer, EDITED */
         memcpy(sq_edit_pcb, rx.pcb[0], ESQ_PCB_LEN);
         esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+        ed_track_lost();
         sq_edited = 1;
         edit_apply();
         ui_say("PROGRAM RECEIVED", "SAVE TO KEEP IT");

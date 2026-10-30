@@ -7,9 +7,9 @@ The voice is a model of the original's voice hardware running its OS 3.5 control
 factory programs come from **your own ROM dumps**, sent to the FM-1's flash once; the firmware holds no ROM data and
 plays generated stand-in waves without them.
 
-> **Status: R2 (development).** It plays: the keys and MIDI; programs in INT, CART A, CART B (yours, in flash) and
-> ROM (your bank's 40), shown as banks of ten; WRITE; the original's SysEx dumps in and out. The page-by-page
-> editor comes next (R3).
+> **Status: R3 (development).** Programs in INT, CART A, CART B (yours, in flash) and ROM (your bank's 40), shown as
+> banks of ten; every voice page of the original, edited as on it; COMPARE, UNDO, INIT, COPY; WRITE; the original's
+> SysEx dumps in and out. Next: system pages and the MODERN look (R4), then the enhancements (R5).
 
 ## Install
 
@@ -37,13 +37,24 @@ python3 tools/esq_syx.py dump --set int -o int.syx  # a set from the FM-1 (int, 
 python3 tools/esq_syx.py dump --edit -o prog.syx    # the program playing
 ```
 
-## Playing (R2)
+## Playing and programming (R3)
 
 | Control | Does |
 | --- | --- |
 | Keys | Play (F3 to G5), velocity 100 |
-| PRESETS | Program: INT, CART A, CART B, ROM, 40 each; the screen shows its bank of ten |
-| ALGORITHM | A bank of ten up or down |
+| PRESETS | Program: INT, CART A, CART B, ROM, 40 each (any page) |
+| HOME | The program page: the program's bank of ten; ALGORITHM a bank up or down |
+| EDIT | OSC 1 > 2 > 3 |
+| FX | DCA 1 > 2 > 3 > DCA 4 |
+| ENV | ENV 1 > 2 > 3 > 4 |
+| LFO | LFO 1 > 2 > 3 |
+| SEQ | FILTER > MODES > SPLIT/LAYER |
+| EDIT held + a key | Any page, in the original's page-button order: OSC 1-3, DCA 1-3, FILTER, DCA 4, ENV 1-4, LFO 1-3, MODES, SPLIT/LAYER (keys F3 up) |
+| SELECT | The cursor over the page's fields (the original's soft buttons) |
+| ALGORITHM | The data slider: the cursor's field |
+| KNOB 1-4 | The four fields of the cursor's row |
+| SEL (press) | COMPARE: the program as stored, against your edits |
+| EDIT held + SEL / HOME / SAVE | UNDO (again: REDO) / INIT / COPY this OSC, DCA, ENV or LFO into the next |
 | SAVE | WRITE: SAVE, pick the slot with PRESETS / ALGORITHM, SAVE again (any other button: cancel) |
 | OCT- / OCT+ | Octave, -3..+3 (both: 0) |
 | MIDI in (USB, TRS) | Notes, velocity, pitch bend, pressure, CC 1 wheel, 4 pedal, 7 volume, 11 XCTRL, 64 sustain, 120 / 123, program change |

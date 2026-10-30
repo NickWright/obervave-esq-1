@@ -32,7 +32,7 @@ NickWright/obervave-esq-1 (the name is historical). Branch `esq1` keeps the earl
 | --- | --- |
 | R1 (done) | Standalone app: whole-synth engine, keys / MIDI, wave bank, program select of the bank's 40 as banks of ten |
 | R2 (done) | Program memory: ROM 40 (read only), INT 40, CART A, CART B (40 each, flash); WRITE; ESQ-1 SysEx single / bank dumps in and out, requests |
-| R3 | The page editor (below), VFD look, cursor + data entry, COMPARE, undo, INIT, copy OSC / ENV / LFO |
+| R3 (done) | The page editor (below), VFD look, cursor + data entry, COMPARE, undo, INIT, copy OSC / ENV / LFO |
 | R4 | MODERN look (the same fields + envelope / LFO / wave graphics), system pages MASTER, MIDI, CONTROL, STORAGE |
 | R5 | Enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), arpeggiator, latch, chord memory, CC / NRPN for every parameter, velocity / pressure curves, MUTATE / RANDOM |
 | R6 | CPU on the device, factory programs, 1.0 |
@@ -86,6 +86,22 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
 - Settings (`sq1d.c`): the program and the octave, saved 3 s after a change once no voice sounds.
 - Panel now: PRESETS program (all 160, wrapping), ALGORITHM a bank of ten, SAVE = WRITE, OCT- / OCT+.
 - Host: `tests/sq1d_r2.txt` (WRITE, the dumps into build/host/sq1d-out.syx), `tests/sq1d_req_*.syx`.
+
+## The voice pages (R3, 2026-10-30)
+
+- `firmware/src/sq_edit.h`: the pages as tables (`PAGES[]`, `fld_t`: label, full name, kind, range, offset in the
+  slot's struct of `sq_edit`); OSC (OCT SEMI FINE WAVE / MOD#1 DEPTH MOD#2 DEPTH), DCA (LEVEL OUTPUT / 2 mods),
+  FILTER (FREQ Q KEYBD / 2 mods), DCA 4 (LEVEL PAN / MOD DEPTH), ENV (L1 L2 L3 LV T1V / T1 T2 T3 T4 TK), LFO (FREQ
+  RESET HUMAN WAV / L1 DELAY L2 MOD), MODES (SYNC AM MONO GLIDE VC / ENV OSC CYC), SPLIT/LAYER (stored and edited;
+  the engine plays one program until R5). WAVE runs over all the bank's waves, the hidden ones too (the alias rows
+  39-41 stepped over). `edit_commit` re-encodes and keeps the bits the decoding loses (`sq_lost`, from
+  `ed_track_lost` at every load); COMPARE (`ed_compare`), UNDO / REDO (`ed_undo`, a gesture = one field, < 1.5 s
+  pauses), INIT (`ed_init`), COPY (`ed_copy`: this OSC / DCA / ENV / LFO into the next).
+- `firmware/src/sq_ui_page.h`: header (page, program name, * EDITED / COMPARE), the fields on a grid of five (rows as
+  the ESQ-1's), the cursor's field large with its full name and a range bar; messages in that area for 2 s.
+- Panel (sq1d.c `panel_in`, `page_button`, `keys_in`): as agreed; EDIT is a tap on its release unless it was used as
+  a modifier (`edit_used`); keys pressed with EDIT held choose a page and play nothing (`KEY_NONE`). Page LEDs lit.
+- Host: `tests/sq1d_r3.txt`.
 
 ## The wave bank in flash (Phase 2, 2026-10-30)
 

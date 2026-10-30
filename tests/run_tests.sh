@@ -35,6 +35,9 @@ assert max(abs(x) for x in a) > 1000, 'silent'\""
 run "R2: WRITE, dumps out (tests/sq1d_r2.txt)" sh -c "rm -f $OUT/sq1d-out.syx; sh tests/run_host.sh tests/sq1d_r2.txt | grep -q 'bank 0 saved' \
     && python3 tools/esq_syx.py list $OUT/sq1d-out.syx | grep -c . | grep -qx 41"
 
+# R3: the voice pages: EDIT / FX / ENV / EDIT + key, cursor, data slider, knobs, COMPARE, UNDO, WRITE of the edit
+run "R3: the voice pages (tests/sq1d_r3.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r3.txt | grep -q 'bank 0 saved'"
+
 # the wave bank's install over SysEx (sq_waves.h) with the placeholder image: taken, CRC checked
 python3 tools/sq_waves_syx.py --placeholder "$OUT/sq_ph.syx" >/dev/null \
     && run "wave bank install (SysEx 96-99, the placeholder image)" sh -c \

@@ -127,18 +127,27 @@ static void ui_voices(void)
     cv_blit(0, 210);
 }
 
+static uint32_t ed_pg_now(void);                /* (sq_edit.h: the page, PG_PROG = 0 the program page) */
+static int ui_page_draw(int full);              /* (sq_ui_page.h) */
+static uint32_t ui_mode_shown = 99u;
+
 static void ui_draw(int full)
 {
     uint32_t i, changed = 0, msg = fm1_ms < ui_msg_until, cur = ui_write ? ui_write - 1u : sq_cur;
     uint32_t key = cur | (uint32_t)msg << 9 | (uint32_t)(ui_write != 0) << 10 | (uint32_t)sq_edited << 11;
     uint32_t hkey = (uint32_t)(ui_oct + 8) | (cur / NSLOT) << 4 | (uint32_t)(ui_write != 0) << 8;
-    if (full) lcd_fill(0, 0, 240, 240, VFD_BG);
-    if (full || hkey != ui_hdr_key) { ui_hdr_key = hkey; ui_header(); }
-    if (full || ui_redraw || key != ui_shown_key) {
-        ui_shown_key = key;
-        ui_redraw = 0;
-        ui_program((int)msg);
-        ui_bank(cur);
+    uint32_t mode = ed_pg_now() && !ui_write;   /* a voice page (a message in its focus area), or the program page */
+    if (mode != ui_mode_shown) { ui_mode_shown = mode; full = 1; }
+    if (full) { lcd_fill(0, 0, 240, 240, VFD_BG); ui_hdr_key = ui_shown_key = 0xFFFFFFFFu; }
+    if (mode) (void)ui_page_draw(full);
+    else {
+        if (hkey != ui_hdr_key) { ui_hdr_key = hkey; ui_header(); }
+        if (ui_redraw || key != ui_shown_key) {
+            ui_shown_key = key;
+            ui_redraw = 0;
+            ui_program((int)msg);
+            ui_bank(cur);
+        }
     }
     for (i = 0; i < ESQ_NVOICE; i++)
         if (ui_vlevel[i] != ui_lv_shown[i]) { ui_lv_shown[i] = ui_vlevel[i]; changed = 1; }
