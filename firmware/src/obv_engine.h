@@ -111,6 +111,11 @@ typedef struct {
 static part_t pt[NPART] = {{&live_p[0], 0, 0, 0, 0, 60 << 16}, {&live_p[1], 0, 0, 0, 0, 60 << 16},
                             {&live_p[2], 0, 0, 0, 0, 60 << 16}, {&live_p[3], 0, 0, 0, 0, 60 << 16}};
 
+#include "sq_esq.h"                             /* SQ1D: the ESQ-1 voice on the cards */
+
+/* a sound's voice mode: its own, or MONO when its ESQ-1 program says so */
+static uint32_t part_mode(uint32_t part) { return sq_part_mono(part) ? M_MONO : pt[part].p->v[P_MODE]; }
+
 static void held_remove(uint32_t p, uint32_t note)
 {
     uint32_t i, j;
@@ -148,11 +153,12 @@ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel, 
     v->lfo_blk = 0;
     v->lfo_fade = pv[P_LFO_DELAY] ? 0 : 32767;
     voice_pan(v, pan);
+    sq_voice_start((uint32_t)(v - vc), part, note, vel, pan);
 }
 
 static int part_grouped(uint32_t part)
 {
-    uint32_t m = pt[part].p->v[P_MODE];
+    uint32_t m = part_mode(part);
     return m == M_MONO || m == M_UNISON;
 }
 
@@ -203,7 +209,7 @@ static void group_pick(uint32_t part, uint32_t n, uint8_t *g)
 
 static uint32_t uni_count(uint32_t part)
 {
-    uint32_t m = pt[part].p->v[P_MODE];
+    uint32_t m = part_mode(part);
     return m == M_MONO ? 1u : m == M_UNISON ? (uint32_t)clampi(pt[part].p->v[P_UNI_N], 1, (int32_t)NV) : 0u;
 }
 static uint8_t grp_v[NPART][NV];                /* each sound's group: its cards, in spread order */
@@ -212,7 +218,7 @@ static uint32_t grp_n[NPART];
 static void voice_trigger(uint32_t part, uint32_t note, uint32_t vel)
 {
     const uint8_t *pv = pt[part].p->v;
-    uint32_t mode = pv[P_MODE], n, i, legato = 0;
+    uint32_t mode = part_mode(part), n, i, legato = 0;
     int32_t det = (pv[P_UNI_DET] * pv[P_UNI_DET]) >> 6, spread = pv[P_SPREAD];
     if (mode == M_POLY) {
         uint32_t v = voice_alloc(part);
@@ -253,6 +259,7 @@ static void voice_trigger(uint32_t part, uint32_t note, uint32_t vel)
                 v->det8 = d;
                 v->gate = 1;
                 voice_pan(v, pan);
+                esq_voice_legato(&sq_part[part], &sq_v[v - vc], (int)note);
             } else
                 voice_start(v, part, note, vel, d, pan);
             v->grp = 1;
@@ -270,7 +277,7 @@ static void voice_trigger(uint32_t part, uint32_t note, uint32_t vel)
 static void voice_release(uint32_t part, uint32_t note, uint32_t from_arp)
 {
     const uint8_t *pv = pt[part].p->v;
-    uint32_t v, mode = pv[P_MODE];
+    uint32_t v, mode = part_mode(part);
     if ((mode == M_MONO || mode == M_UNISON) && !from_arp && nheld[part] && pv[P_ARP_MODE] == A_OFF) {
         uint32_t n = grp_n[part], i;
         voice_t *v0 = &vc[grp_v[part][0]];
@@ -281,6 +288,7 @@ static void voice_release(uint32_t part, uint32_t note, uint32_t from_arp)
                 w->note = held[part][nheld[part] - 1u].note;
                 w->target16 = (int32_t)w->note << 16;
                 if (!pv[P_GLIDE]) w->pitch16 = w->target16;
+                esq_voice_legato(&sq_part[part], &sq_v[w - vc], (int)w->note);
             }
             pt[part].last_pitch16 = v0->target16;
         }
@@ -753,7 +761,7 @@ static void engine_audio(int32_t *out, uint32_t n)
         if (ctl_arp_restart) { ctl_arp_restart = 0; for (p = 0; p < NPART; p++) { arp[p].pos = 0; arp[p].cnt = 0xFFFFFFFFu; } }
         for (p = 0; p < NPART; p++) arp_tick(p);
         seq_tick();                             /* (may swap the pattern in) */
-        for (p = 0; p < NPART; p++) { lfo_tick(&pt[p]); block_globals(&pt[p]); }
+        for (p = 0; p < NPART; p++) { lfo_tick(&pt[p]); block_globals(&pt[p]); sq_block(p, &pt[p]); }
         for (v = 0; v < NV; v++) {
             if (vc[v].ae.stage == E_IDLE && !vc[v].gate) {
                 if (ui_vlevel[v]) { ui_vlevel[v] = 0; vc[v].amp0 = vc[v].amp1 = 0; }
@@ -761,8 +769,8 @@ static void engine_audio(int32_t *out, uint32_t n)
             }
             p = vc[v].part % NPART;
             used |= 1u << p;
-            voice_block(&vc[v], v);
-            voice_render(&vc[v], bus[p] + 2u * b);
+            if (!sq_voice_block(v, &vc[v], bus[p] + 2u * b)) vc[v].ae.stage = E_IDLE;   /* (SQ1D: the ESQ-1 voice) */
+            else if (vc[v].ae.stage == E_IDLE) vc[v].ae.stage = E_SUS;
         }
     }
     for (p = 0; p < NPART; p++) {               /* the mixer */
@@ -846,4 +854,5 @@ static void engine_init(void)
         pt[v].lfo_rnd_b = xorshift(&rnd_state);
     }
     fx_init();
+    sq_init();
 }

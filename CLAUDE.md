@@ -1,22 +1,43 @@
-# SQAVE (codename ESQ1D) — fork of OberVave
+# SQ1D — fork of OberVave
 
-This branch (`esq1`) turns OberVave into SQAVE: one 8-voice synth with the ESQ-1 voice architecture
+This branch (`esq1`) turns OberVave into SQ1D: one 8-voice synth with the ESQ-1 voice architecture
 (3 DOC-style wave oscillators, 4-pole low-pass, DCA4, 4 envelopes, 3 LFOs), OS 3.5 control arithmetic,
 and extensions (wave scanning, AM+SYNC together, Q modulation, new LFO types, microtuning, unison).
 Everything below the line is upstream OberVave's notes and still applies to the platform, panel, sequencer and build.
+Name by the user (2026-10-30): SQ1D.
 
 ## Fork rules
 
-- **No ROM data in the repo or in any package.** ESQ-1 wave ROMs, OS images, dumps and anything derived from them
-  (tables, disassembly) stay out of git (`.gitignore`: `waves/`, `private/`). The firmware ships generated fallback waves;
-  the owner's dump goes to flash with the install tool, locally.
-- **No trademarks in the product:** never "Ensoniq", "ESQ-1", "ESQ" on screen, in patch names or in the release name.
-  "SQAVE" on screen and in the package; ESQ1D only as the internal codename; "inspired by" in docs only.
+- **No bulk ROM content in the repo or in any package:** ESQ-1 wave ROMs, the zone map, the OS's programs, OS images,
+  dumps, disassembly listings. `.gitignore`: `waves/`, `private/`, `*.rom`, `*.esqw`. The firmware ships the generated
+  placeholder waves (`esq/esq_phbank.h`, not ROM data); the owner's bank (`.esqw`, made locally by the engine's
+  `tools/esq1rom.py` from the two wave ROMs and `3p5lo.bin`) goes to flash with the install tool.
+  Allowed (the user, 2026-10-30): the engine's small control constants read from OS 3.5 (envelope / LFO rate knots,
+  VCA / filter / DCA curves: `esq_ktab.h`, `esq_qtab.h`, constants in `esq_engine.c`).
+- **No trademarks in the product beyond the name:** never "Ensoniq" or "ESQ-1" on screen, in patch names or in the
+  release name; "inspired by" in docs only. The user chose the name SQ1D knowing "SQ-1" was also an Ensoniq model.
 - Package identity `FM-1_97XY` (`FM-1_9700` a dev build), so the Firmware Hub never confuses it with OberVave (`FM-1_95XY`).
 - FM-1 only for now; the SMK-37 build is untouched upstream code.
 - Two UIs over one parameter table: MODERN (default) and VFD (2x40 dot-matrix look, own 5x7 font). GLOBAL > UI STYLE.
 - Program format: stock ESQ-1 program fields first (SysEx-compatible with real units and esqlib), an extension block
   for the new parameters, reserved up front.
+
+## The engine (Phase 1, 2026-10-30)
+
+- `firmware/src/esq/`: the user's ESQ-1 engine (esq1-fm1, v6.6), integer build (`esq/esq_sq1d.h`: ESQ_FIXED,
+  ESQ_HOST 0, ESQ_NVOICE 1 = the per-voice API, zones and knot curves read in place). Tests: `tests/esq_engine_test.c`
+  (105 checks, float and integer), in `tests/run_tests.sh`.
+- `firmware/src/sq_esq.h`, included by `obv_engine.h`: each of OberVave's eight cards gets an `esq_voice_t`
+  (`sq_v[card]`); each track an `esq_synth_t` (`sq_part[p]`: its ESQ-1 program, controls). OberVave keeps the
+  allocation, MONO / UNISON groups (an ESQ-1 program with MONO plays as MONO: `part_mode`), arp, sequencer, mixer,
+  effects. A card's gate falling -> `esq_voice_off`; the render returning 0 -> the card is idle (`ae.stage`).
+  Pitch = note + bend + tune + unison detune (1/256 semitone); glide is the ESQ-1 program's. Voice pan: the program's
+  PAN through the engine's side signal, OberVave's SPREAD as `pan_bias`. `SQ_GAIN_K` sets the level.
+- Phase 1 stop-gap: a track's program number picks the ESQ-1 program (0..6 the engine's demos, 7..46 the bank's
+  40), `sq_prog_src = trk_prog`; the screen still shows OberVave's program names. OberVave's own synth parameters are
+  unused. Phase 3 replaces the patch with the ESQ-1 program + extension block.
+- Host: `SQ1D_BANK=path/to/esq1.esqw` loads the owner's bank (else placeholder waves). `tests/sq1d_programs.txt`
+  walks 15 programs with chords. Host cost: ~+25 % wall time against OberVave's engine on an 8-voice chord.
 
 ---
 

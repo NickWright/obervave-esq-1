@@ -68,6 +68,14 @@ else
     echo "(no node or no docs/sim/obervave.wasm: the browser simulator's test is skipped)"
 fi
 
+# SQ1D: the ESQ-1 engine's own tests (pitch, DOC, envelopes, LFOs, CVs, voices, SYNC, AM, filter, programs, glide),
+# the float model and the integer build the firmware runs, the integer one checked against the float one
+mkdir -p build/host
+for q in 0 1; do
+    cc -O2 -std=c99 -Wall -Wno-unused-function -D_DEFAULT_SOURCE -DESQ_FIXED=$q -o build/host/esq_engine_test$q tests/esq_engine_test.c -lm \
+        && run "ESQ-1 engine (ESQ_FIXED=$q)" sh -c "cd tests && ../build/host/esq_engine_test$q"
+done
+
 run "installer (tools/fm1_install.py): FM-1 and SMK-37, install and the update-mode resume check the model" python3 tests/install_test.py
 
 [ "$fail" = 0 ] && echo "ALL TESTS PASSED" || echo "SOME TESTS FAILED"

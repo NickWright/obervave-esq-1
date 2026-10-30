@@ -1952,6 +1952,7 @@ static void app_main(void)
 #if BOARD_SMK37
     smk_pad_events = 1;                         /* the pads are OberVave's step pads (obv_smk.h), not notes */
 #endif
+    sq_prog_src = trk_prog;                     /* (SQ1D) the tracks' programs pick their ESQ-1 programs */
     engine_init();
     cc_map_init();
     {

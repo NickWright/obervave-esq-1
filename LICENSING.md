@@ -9,6 +9,7 @@ complete source under the same licence too.
 | | |
 | --- | --- |
 | The platform: `firmware/hal/`, `firmware/loader/`, `crt0.S`, `app.ld`, `firmware/src/` (`usb.c`, `midi_uart.c` (the TRS MIDI IN; its fix from Felucca Salt by ChanceTheMaker, found by keremimo), `ota.c`, `recovery.c`, `lcd.c`, `gfx.c`, `libc.c`, `bootguard.h`, `uac_fir.h`), `tools/` | Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments ([Felucca](https://github.com/hugelton/Felucca)), with the changes of [SLOOP](https://github.com/isod89/sloop-fm1) (isod89) |
+| The ESQ-1 voice engine: `firmware/src/esq/`, `firmware/src/sq_esq.h`, `tests/esq_engine_test.c` (SQ1D) | Copyright (C) 2026 Nick Wright (esq1-fm1); GPL-3.0-only. Its placeholder waves are generated, not ROM data |
 | The platform's wiring `platform.c`, the host mode `tests/`, the docs, the build (`build.sh`, `tools/build.py`) | zvenson, as [Dinghy](https://github.com/zvenson/dinghy) |
 | The update loader's screen: `firmware/loader/ldr_screen.c`, `tests/ldr_screen_test.c` | Copyright (C) 2026 zvenson (the Firmware Hub's look); the idea, a loader that draws, its 5 x 7 letters and the order of things from [Skiff](https://github.com/illuminus5/skiff) by illuminus5, GPL-3.0 |
 | The synth: `firmware/src/obervave.c`, `obv_*.h`, `firmware/gen/obv_tables.h` and `tools/gen_tables.py`, the programs, the screen, the video (`video/`) | Copyright (C) 2026 zvenson |

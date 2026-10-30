@@ -7,3 +7,4 @@ waves/
 private/
 *.rom
 wave-rom-*.bin
+*.esqw
