@@ -177,6 +177,15 @@ def build_app():
             ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
             ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
             ("cc", *flags, "-c", FW / "src" / "sq1d.c", "-o", OUT / "sq1d.o")]
+    objs = [OUT / "sq1d.o"]
+    # (R4) the engine as its own object at -O2, the rest for size (Felucca's way: the audio path ~2x faster), with its
+    # per-sample loop copied into .ram_text; SQ1D_ESQ_SPLIT=0 builds it inside sq1d.c at -Os as before
+    if os.environ.get("SQ1D_ESQ_SPLIT") != "0":
+        split = ["-DSQ1D_ESQ_SPLIT=1"] + (["-DSQ1D_ESQ_NORAM=1"] if os.environ.get("SQ1D_ESQ_RAM") == "0" else [])
+        cmds[-1] = ("cc", *flags, *split, "-c", FW / "src" / "sq1d.c", "-o", OUT / "sq1d.o")
+        cmds.append(("cc", "-O2", *[f for f in flags if f not in ("-Os", "-O2")], *split, "-include", FW / "src" / "esq" / "esq_sq1d.h",
+                     "-c", FW / "src" / "esq" / "esq_engine.c", "-o", OUT / "esq_engine.o"))
+        objs.append(OUT / "esq_engine.o")
     tc_all(*cmds)
     elf = OUT / "sq1d.elf"
     ld = FW / "app.ld"
@@ -187,7 +196,7 @@ def build_app():
         ld = OUT / "app.ld"
         ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#X}".replace("0X", "0x")))
     tc("pi32v2/bin/ld", "--gc-sections", "-e", "_start", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o",
-       OUT / "fm1_isr.o", OUT / "sq1d.o", "-o", elf)
+       OUT / "fm1_isr.o", *objs, "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),

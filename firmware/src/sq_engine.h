@@ -7,7 +7,11 @@
  * The waves: the generated placeholder set (esq_phbank.h, not ROM data) until the owner's bank is in flash
  * (sq_waves.h). The host build can read a bank from the file in SQ1D_BANK (tests). */
 #include "esq/esq_sq1d.h"
+#if ESQ_SPLIT
+#include "esq/esq_engine.h"                     /* (the engine: its own object, -O2: tools/build.py) */
+#else
 #include "esq/esq_engine.c"
+#endif
 #include "esq/esq_waves.c"
 #include "esq/esq_patches.c"
 #include "esq/esq_patch.c"

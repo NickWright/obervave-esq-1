@@ -11,4 +11,15 @@
 #define ESQ_ZONE_POOL 344                 /* .. and their 340 zones (not in RAM: ESQ_ZONE_INPLACE) */
 #define ESQ_ZONE_INPLACE 1                /* the zones read in place from the bank image */
 #define ESQ_CONST_TABLES 1                /* the knot curves in flash (esq_ktab.h) */
+/* (R4) the device build (tools/build.py: -DSQ1D_ESQ_SPLIT=1) compiles esq_engine.c as its own object at -O2, the rest
+ * for size, as Felucca does, and puts a second copy of the per-sample loop in .ram_text (crt0 copies it to RAM; no
+ * calls in it: build.py checks); esq_ram_on picks it. The host includes the engine in the unity build */
+#if SQ1D_ESQ_SPLIT
+#define ESQ_SPLIT 1
+#ifndef SQ1D_ESQ_NORAM
+#define ESQ_RAMFN __attribute__((section(".ram_text.esq"), noinline, used))
+#endif
+#elif defined(SQ1D_ESQ_RAM_TEST)          /* (host: the RAM copy built and picked, without the section) */
+#define ESQ_RAMFN __attribute__((noinline, used))
+#endif
 #endif
