@@ -76,7 +76,8 @@ static void sq_tdrop_all(void)                  /* (main loop) the timed notes n
 }
 
 /* ---- the ISR side */
-static volatile uint32_t ui_nvoices, ui_render_us;   /* (ISR -> UI) voices sounding, the render's time */
+static volatile uint32_t ui_nvoices, ui_render_us, ui_irq_us;   /* (ISR -> UI) voices sounding, the render's time,
+                                                 * the timer interrupt's inside it */
 static volatile uint8_t ui_vlevel[ESQ_NVOICE];  /* each voice's ENV4, 0..127 (the voice LEDs) */
 
 static void sq_do(const sq_ev_t *e)
@@ -158,11 +159,21 @@ static uint8_t *sq_host_bank;                   /* (host) the owner's bank, read
 /* the bank: an .esqw image read in place (img, len), or (img 0) the placeholder. Every voice stops (their tables
  * pointed into the old bank), the program is taken again from the new one. 0: img was taken. (Main loop, with the
  * interrupts off: the ISR never sees half a bank) */
+/* (R4.1) the bank is copied into RAM and played from there: the voices' wave reads (8 voices x 3 oscillators at the
+ * DOC's 38 kHz, all over 75 KB) missed the flash's XIP cache; the pool holds it (19 sectors, as the store) */
+#define SQ_WRAM (19u * 4096u - 256u)
+static uint8_t sq_wram[SQ_WRAM] __attribute__((section(".pool"), aligned(4)));
+static int sq_bank_ram(const uint8_t *img, uint32_t len)
+{
+    if (len > SQ_WRAM) return esq_wavebank_load_const(&sq_bank, img, len);   /* (too big: in place) */
+    memcpy(sq_wram, img, len);
+    return esq_wavebank_load_const(&sq_bank, sq_wram, len);
+}
 static int sq_set_bank(const uint8_t *img, uint32_t len)
 {
     int rc = -1, i;
-    if (img && len) rc = esq_wavebank_load_const(&sq_bank, img, len);
-    if (rc) (void)esq_wavebank_load_const(&sq_bank, ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
+    if (img && len) rc = sq_bank_ram(img, len);
+    if (rc) (void)sq_bank_ram(ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
     for (i = 0; i < ESQ_NVOICE; i++) sq.v[i].active = 0;
     sq.nheld = 0;
     sq_bank_changed = 1;
@@ -188,7 +199,7 @@ static void sq_engine_init(void)
         printf("SQ1D bank %s: %s\n", path, loaded ? "loaded" : "NOT loaded, placeholder waves");
     }
 #endif
-    if (!loaded) esq_wavebank_load_const(&sq_bank, ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
+    if (!loaded) (void)sq_bank_ram(ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
     esq_init(&sq, FS, &sq_bank);
     sq.volume = 127;
     sq_rom_program(0, &p);

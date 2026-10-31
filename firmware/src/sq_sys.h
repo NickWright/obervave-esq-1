@@ -18,10 +18,12 @@ typedef struct {
     uint8_t arp, amode, aoct, arate, agate, latch, chord, nchord;          /* ARP, chord memory */
     int8_t chordi[8];                                                      /* .. its notes over the lowest */
     uint8_t tempo, swing, patt, keys;                                      /* SEQ (patt 1..8; keys 1: transpose) */
-    uint8_t pad1[3];                                                       /* (44 bytes, no hidden padding: memcmp) */
+    uint8_t usboff;                                                        /* (R4.1) MASTER USB AUDIO OFF */
+    uint8_t pad1[2];                                                       /* (44 bytes, no hidden padding: memcmp) */
 } sq_sys_t;
+typedef char sq_sys_size_check[sizeof(sq_sys_t) == 44u ? 1 : -1];   /* (memcmp: no hidden padding) */
 static const sq_sys_t SYS_DEFAULT = {SYS_MAGIC, 0, 0, 0, 0, 2, 100, CRV_LIN, CRV_LIN, 127, 0, 1, 0, 0, 0,
-                                     IMP_ASK, DMP_INT, 0, AM_UP, 1, RT_16, 50, 0, 0, 0, {0}, 120, 50, 1, 0, {0}};
+                                     IMP_ASK, DMP_INT, 0, AM_UP, 1, RT_16, 50, 0, 0, 0, {0}, 120, 50, 1, 0, 0, {0}};
 static sq_sys_t sys, sys_saved;
 static uint32_t sys_due;
 
@@ -30,6 +32,9 @@ static void sys_apply(void)                     /* the engine's part, at boot an
     sq_event(EV_SET, SET_TUNE, 0, sys.tune);
     sq_event(EV_SET, SET_BENDR, 0, sys.bend);
     sq_event(EV_CC, 7, sys.volume, 0);
+#ifndef OBV_HOST
+    uac_off = sys.usboff;
+#endif
 }
 
 static void sys_boot(void)

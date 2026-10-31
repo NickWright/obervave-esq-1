@@ -32,14 +32,26 @@ static void sq_sx_byte(uint32_t b);
 #include "sq_edit.h"
 #include "sq_ui_page.h"
 
+/* the CPU meter (R4.1): the render's own time and, apart, what the timer interrupt (key scan, USB) took inside it;
+ * the most of each over the last 64 renders (0.37 s) */
 static void app_audio(int32_t *out, uint32_t n)
 {
 #ifndef OBV_HOST
-    uint32_t t0 = fm1_ticks();
+    static uint32_t k, pe, pi;
+    uint32_t t0 = fm1_ticks(), n0 = t5_nested, all, irq;
 #endif
     sq_render(out, n);
 #ifndef OBV_HOST
-    ui_render_us = (fm1_ticks() - t0) / FM1_TICKS_PER_US;
+    all = fm1_ticks() - t0;
+    irq = t5_nested - n0;
+    if (irq > all) irq = all;
+    if (all - irq > pe) pe = all - irq;
+    if (irq > pi) pi = irq;
+    if (++k >= 64u) {
+        ui_render_us = pe / FM1_TICKS_PER_US;
+        ui_irq_us = pi / FM1_TICKS_PER_US;
+        pe = pi = k = 0;
+    }
 #endif
 }
 

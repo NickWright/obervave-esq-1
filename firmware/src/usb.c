@@ -1155,7 +1155,7 @@ static uint32_t uac_packet(uint32_t *d)
 static void uac_service(void)
 {
     uint32_t csr, n;
-    if (!usb.up || !usb.config || !uac.alt)
+    if (!usb.up || !usb.config || !uac.alt || uac_off)
         return;
     sie_wr(S_INDEX, 4);
     csr = sie_rd(S_TXCSR1);

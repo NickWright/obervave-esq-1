@@ -107,6 +107,8 @@ static volatile uint32_t fm1_ms;                /* milliseconds since power-on (
 #if BOARD_SMK37 && FELUCCA_UART
 #error "BOARD_SMK37: no UART MIDI IN (RX on PH8, a key-matrix row on the SMK)"
 #endif
+static volatile uint8_t uac_off;               /* (SQ1D, MASTER USB AUDIO OFF) no audio to the computer: its ring, resampler
+                                                 * and packets cost the audio ISR and TIMER5 nothing */
 #include "usb.c"
 #if FELUCCA_UART
 #include "midi_uart.c"                          /* (sloopDX's, after Felucca Salt: the ring read by content) */
@@ -407,7 +409,15 @@ static void midi_send(uint32_t st, uint32_t d1, uint32_t d2)   /* from the main 
 /* ---- the timer: 10 kHz key scan, milliseconds, USB at 2 kHz. It outranks the audio ISR; nested in a
  * render it only scans, counts and feeds the USB audio stream (as sloopDX main.c) */
 static volatile uint8_t in_audio;
+static volatile uint32_t t5_nested;             /* (SQ1D's CPU meter) ticks TIMER5 spent inside the audio ISR */
+static void fm1_timer5_main(void);
 void fm1_timer5_irq(void)
+{
+    uint32_t a = fm1_ticks();
+    fm1_timer5_main();
+    if (in_audio) t5_nested += fm1_ticks() - a;
+}
+static void fm1_timer5_main(void)
 {
     static uint32_t sub, owed, last, acc;
     uint32_t t0 = fm1_ticks(), usb_due = sub % 5u == 0u;
@@ -471,13 +481,13 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         uint32_t i, b;
         for (i = 0; i < HALF_WORDS; i++)
             o[i] = 0;
-        UAC_ONLY(uac_render_start());
+        if (!uac_off) UAC_ONLY(uac_render_start());
         app_audio(o, HALF_FRAMES);
         for (i = 0; i < HALF_WORDS; i++) {
             int32_t v = (o[i] * master_q12) >> 12;
             o[i] = v > 32767 ? 32767 : v < -32767 ? -32767 : v;
         }
-        for (b = 0; b < HALF_FRAMES; b += 32u)
+        for (b = 0; b < HALF_FRAMES && !uac_off; b += 32u)
             UAC_ONLY(uac_tap(o + 2u * b, 32u));   /* the computer records what the speaker plays */
         for (i = 0; i < HALF_WORDS; i++)
             o[i] <<= 7;

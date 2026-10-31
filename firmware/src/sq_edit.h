@@ -81,6 +81,7 @@ static const char *const KEYS_NAME[] = {"PLAY", "TRNSP"};
 static const char *const CRV_NAME[] = {"LIN", "SOFT", "HARD", "FIXED"};
 static const char *const PCRV_NAME[] = {"LIN", "SOFT", "HARD", "OFF"};
 static const char *const CLK_NAME[] = {"INT", "MIDI"};
+static const char *const USB_NAME[] = {"ON", "OFF"};
 static const char *const IMP_NAME[] = {"ASK", "INT", "CRT A", "CRT B"};
 static const char *const DMP_NAME[] = {"INT", "CRT A", "CRT B", "ROM", "EDIT"};
 #define F_S(m) offsetof(sq_sys_t, m)
@@ -103,7 +104,8 @@ static const fld_t F_MST_[] = {
     {"TUNE", "MASTER TUNE", K_S8, -31, 31, F_S(tune)}, {"BEND", "BEND RANGE", K_U8, 0, 12, F_S(bend)},
     {"VOL", "VOLUME", K_U8, 0, 127, F_S(volume)},
     {"KVEL", "KEY VELOCITY", K_U8, 1, 127, F_S(keyvel)}, {"CURVE", "VELOCITY CURVE", K_ENUM, 0, 3, F_S(velcrv), CRV_NAME},
-    {"PRESS", "PRESSURE CURVE", K_ENUM, 0, 3, F_S(prscrv), PCRV_NAME}};
+    {"PRESS", "PRESSURE CURVE", K_ENUM, 0, 3, F_S(prscrv), PCRV_NAME},
+    {"USB", "AUDIO TO THE COMPUTER", K_ENUM, 0, 1, F_S(usboff), USB_NAME}};
 static const fld_t F_MIDI_[] = {
     {"CHAN", "MIDI CHANNEL", K_CHAN, 0, 16, F_S(chan)}, {"PROG", "PROGRAM CHANGE IN", K_ONOFF, 0, 1, F_S(rxprog)},
     {"SEND", "NOTES OUT", K_ONOFF, 0, 1, F_S(send)},
@@ -118,7 +120,7 @@ static const page_t PAGES[NPG] = {
     [PG_DCA4] = {"DCA 4", 1, 2, 2, F_D4_}, [PG_ENV] = {"ENV", 4, 5, 5, F_ENV_}, [PG_LFO] = {"LFO", 3, 4, 4, F_LFO_},
     [PG_MODES] = {"MODES", 1, 5, 3, F_MD_}, [PG_SPLIT] = {"SPLIT/LAYER", 1, 4, 4, F_SP_},
     [PG_PERF] = {"PERFORM", 1, 4, 4, F_PERF_}, [PG_ARP] = {"ARP", 1, 5, 4, F_ARP_}, [PG_SEQ] = {"SEQ", 1, 5, 5, F_SEQ_},
-    [PG_MASTER] = {"MASTER", 1, 3, 3, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
+    [PG_MASTER] = {"MASTER", 1, 3, 4, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
     [PG_STORE] = {"STORAGE", 1, 2, 0, F_STO_}};
 
 /* (R4.1) screens: each page in screens of at most four fields, one under each knob (KNOB 1-4 left to right); SELECT
@@ -126,7 +128,7 @@ static const page_t PAGES[NPG] = {
 static const char *const SCR[NPG] = {
     [PG_PROG] = "", [PG_OSC] = "0123/4567", [PG_DCA] = "01/2345", [PG_FILT] = "012/3456", [PG_DCA4] = "0123",
     [PG_ENV] = "0123/5678/49", [PG_LFO] = "0123/4567", [PG_MODES] = "0123/4567", [PG_SPLIT] = "0123/4567",
-    [PG_PERF] = "0123/4567", [PG_ARP] = "0123/4567/8", [PG_SEQ] = "0123/5678/49", [PG_MASTER] = "012/345",
+    [PG_PERF] = "0123/4567", [PG_ARP] = "0123/4567/8", [PG_SEQ] = "0123/5678/49", [PG_MASTER] = "012/3456",
     [PG_MIDI] = "012/34", [PG_STORE] = "01"};
 static uint32_t ed_scr_n(uint32_t pg)           /* the page's screens */
 {
@@ -328,7 +330,7 @@ static void ed_turn(uint32_t i, int32_t d)
         if (ed_pg == PG_SEQ) seq_view_apply();
         if (old.arp != sys.arp || old.latch != sys.latch || old.chord != sys.chord) pl_reset();
         if (old.clock != sys.clock) seq_stop();
-        if (old.tune != sys.tune || old.bend != sys.bend || old.volume != sys.volume) sys_apply();
+        if (old.tune != sys.tune || old.bend != sys.bend || old.volume != sys.volume || old.usboff != sys.usboff) sys_apply();
         return;
     }
     if (ed_comparing) { ed_compare(); return; }   /* (a turn ends COMPARE first, as on the ESQ-1) */

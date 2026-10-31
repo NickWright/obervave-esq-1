@@ -12,7 +12,7 @@ static int32_t ui_oct;
 static uint32_t ui_write;                       /* WRITE: 0 off, else 1 + the target program number */
 static uint32_t ui_shown_key = 0xFFFFFFFFu, ui_hdr_key = 0xFFFFFFFFu;
 static uint8_t ui_lv_shown[ESQ_NVOICE];
-static uint32_t ui_us_shown = 0xFFFFFFFFu, ui_redraw;
+static uint32_t ui_us_shown = 0xFFFFFFFFu, ui_irq_shown, ui_redraw;
 static char ui_msg[2][20];
 static uint32_t ui_msg_until;
 
@@ -142,9 +142,11 @@ static void ui_voices(void)
         cv_rect(6 + (int32_t)i * 16, 6, 12, 20, VFD_DIM);
         if (h) cv_rect(6 + (int32_t)i * 16, 26 - h, 12, h, VFD);
     }
-    t[0] = 0;
+    t[0] = 0;                                   /* the render + the interrupts inside it, us (of 5805) */
     ui_fmt_u(t, ui_us_shown);
-    ui_cat(t, " us");
+    ui_cat(t, "+");
+    ui_fmt_u(t, ui_irq_us);
+    ui_cat(t, "us");
     cv_text(240 - 6 - text_w(&FONT_S, t), 8, &FONT_S, t, VFD_DIM);
     cv_blit(0, 210);
 }
@@ -175,6 +177,6 @@ static void ui_draw(int full)
     }
     for (i = 0; i < ESQ_NVOICE; i++)
         if (ui_vlevel[i] != ui_lv_shown[i]) { ui_lv_shown[i] = ui_vlevel[i]; changed = 1; }
-    if (ui_render_us != ui_us_shown) { ui_us_shown = ui_render_us; changed = 1; }
+    if (ui_render_us != ui_us_shown || ui_irq_us != ui_irq_shown) { ui_us_shown = ui_render_us; ui_irq_shown = ui_irq_us; changed = 1; }
     if (changed || full) ui_voices();
 }
