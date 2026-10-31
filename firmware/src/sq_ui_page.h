@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SQ1D's voice pages (R3), VFD look: the page's two rows of fields on a grid of five, as the ESQ-1 lays them over
- * its soft buttons, the cursor's field lit; under them the cursor's field again in large letters with its full name
- * and, for a number, where it sits in its range. */
+/* SQ1D's pages, VFD look (R4.1): the screen's fields (at most four) in four columns, one over each knob, the field
+ * ALGORITHM turns lit; under them that field again in large letters with its full name and, for a number, where it
+ * sits in its range (SEQ: the pattern's steps). The header: the page, C* when edited, which screen of how many. */
 static uint32_t pg_key_shown = 0xFFFFFFFFu, pg_hash_shown;
 
 static uint32_t pg_hash(void)                  /* a cheap sum of what the page shows: redraw when it changes */
@@ -24,7 +24,13 @@ static void pg_header(void)
     char t[24], nm[8];
     cv_begin(240, 24, VFD_BG);
     pg_title(t);
-    if (sq_edited && !ed_comparing && !PG_SYS(ed_pg)) ui_cat(t, "  C*");   /* (the ESQ-1's change marker, every page) */
+    if (ed_scr_n(ed_pg) > 1u) {                 /* which screen: "OSC 2 1/2" */
+        ui_cat(t, " ");
+        ui_fmt_u(t, ed_scr[ed_pg] % ed_scr_n(ed_pg) + 1u);
+        ui_cat(t, "/");
+        ui_fmt_u(t, ed_scr_n(ed_pg));
+    }
+    if (sq_edited && !ed_comparing && !PG_SYS(ed_pg)) ui_cat(t, " C*");   /* (the ESQ-1's change marker, every page) */
     cv_text(6, 4, &FONT_S, t, VFD);
     ui_cpy(nm, sq_edit.name, 7);
     if (ed_pg == PG_SEQ) {                      /* the transport, the transposition */
@@ -42,24 +48,28 @@ static void pg_header(void)
     cv_blit(0, 0);
 }
 
-/* the fields: two rows on the grid of five; the cursor lit */
+/* the screen's fields: four columns of 60, one over each knob; ALGORITHM's field lit */
 static void pg_fields(void)
 {
-    const page_t *p = &PAGES[ed_pg];
-    uint32_t i, n = ed_nfld(ed_pg), cur = ed_cur[ed_pg] % n;
-    cv_begin(240, 100, VFD_BG);
-    for (i = 0; i < n; i++) {
-        const fld_t *f = ed_fld(ed_pg, i);
-        uint32_t row = i >= p->n1, col = row ? i - p->n1 : i;
-        int32_t x = (int32_t)col * 48, y = 6 + (int32_t)row * 48;
-        char v[12];
-        fld_text(ed_pg, ed_slot[ed_pg], f, v);
-        v[6] = 0;
-        if (i == cur) cv_rect(x + 1, y - 2, 46, 42, VFD_SEL_BG);
-        cv_text(x + (48 - text_w(&FONT_S, f->lab)) / 2, y, &FONT_S, f->lab, i == cur ? VFD_BG : VFD_DIM);
-        cv_text(x + (48 - text_w(&FONT_S, v)) / 2, y + 20, &FONT_S, v, i == cur ? VFD_BG : VFD);
+    uint8_t fi[4];
+    uint32_t i, n = ed_scr_fields(ed_pg, ed_scr[ed_pg] % ed_scr_n(ed_pg), fi);
+    cv_begin(240, 80, VFD_BG);
+    for (i = 0; i < 4u; i++) {
+        int32_t x = (int32_t)i * 60;
+        cv_rect(x + 29, 74, 2, 4, VFD_DIM);    /* (the knob under it) */
+        if (i < n) {
+            const fld_t *f = ed_fld(ed_pg, fi[i]);
+            uint32_t sel = fi[i] == ed_cur[ed_pg];
+            char v[12];
+            const felucca_font_t *ft;
+            fld_text(ed_pg, ed_slot[ed_pg], f, v);
+            ft = text_w(&FONT_L, v) <= 58 ? &FONT_L : &FONT_S;
+            if (sel) cv_rect(x + 1, 2, 58, 70, VFD_SEL_BG);
+            cv_text(x + (60 - text_w(&FONT_S, f->lab)) / 2, 8, &FONT_S, f->lab, sel ? VFD_BG : VFD_DIM);
+            cv_text(x + (60 - text_w(ft, v)) / 2, ft == &FONT_L ? 30 : 38, ft, v, sel ? VFD_BG : VFD);
+        }
     }
-    cv_rect(0, 99, 240, 1, VFD_DIM);
+    cv_rect(0, 79, 240, 1, VFD_DIM);
     cv_blit(0, 24);
 }
 
@@ -70,11 +80,11 @@ static void pg_focus(void)
     const fld_t *f = ed_fld(ed_pg, cur);
     int32_t v = fld_get(ed_pg, ed_slot[ed_pg], f), hi = fld_hi(f);
     char t[12];
-    cv_begin(240, 86, VFD_BG);
+    cv_begin(240, 106, VFD_BG);
     if (fm1_ms < ui_msg_until) {                /* a message (UNDO, COPY, a received program) for 2 s */
-        cv_text(8, 14, &FONT_L, ui_msg[0], VFD);
-        cv_text(8, 56, &FONT_S, ui_msg[1], VFD_DIM);
-        cv_blit(0, 124);
+        cv_text(8, 24, &FONT_L, ui_msg[0], VFD);
+        cv_text(8, 66, &FONT_S, ui_msg[1], VFD_DIM);
+        cv_blit(0, 104);
         return;
     }
     if (ed_pg == PG_SEQ) {                      /* the cursor's field on a line, under it the pattern's steps */
@@ -96,24 +106,24 @@ static void pg_focus(void)
             if (seq_play && k == seq_shown_pos) cv_rect(x + 3, y + 3, 6, 5, st->note[0] ? VFD_BG : VFD);
             if (k == seq_cur) cv_rect(x, y + 12, 12, 2, VFD);
         }
-        cv_blit(0, 124);
+        cv_blit(0, 104);
         return;
     }
-    cv_text(8, 6, &FONT_S, f->name, VFD_DIM);
+    cv_text(8, 14, &FONT_S, f->name, VFD_DIM);
     fld_text(ed_pg, ed_slot[ed_pg], f, t);
-    cv_text(8, 28, &FONT_L, t, VFD);
+    cv_text(8, 38, &FONT_L, t, VFD);
     if (hi - f->lo >= 7) {                      /* a number: the bar of its range (0 marked when it is signed) */
         int32_t w = 224 * (v - f->lo) / (hi - f->lo);
-        cv_rect(8, 70, 224, 6, VFD_DIM);
+        cv_rect(8, 82, 224, 6, VFD_DIM);
         if (f->lo < 0) {
             int32_t z = 224 * -f->lo / (hi - f->lo);
-            if (w >= z) cv_rect(8 + z, 70, w - z + 1, 6, VFD);
-            else cv_rect(8 + w, 70, z - w, 6, VFD);
-            cv_rect(8 + z, 67, 1, 12, VFD);
+            if (w >= z) cv_rect(8 + z, 82, w - z + 1, 6, VFD);
+            else cv_rect(8 + w, 82, z - w, 6, VFD);
+            cv_rect(8 + z, 79, 1, 12, VFD);
         } else
-            cv_rect(8, 70, w + 1, 6, VFD);
+            cv_rect(8, 82, w + 1, 6, VFD);
     }
-    cv_blit(0, 124);
+    cv_blit(0, 104);
 }
 
 /* the page's part of the screen; 1: it is a voice page (the program page is ui_draw's own) */
@@ -121,7 +131,7 @@ static int ui_page_draw(int full)
 {
     uint32_t key, h;
     if (ed_pg == PG_PROG) { pg_key_shown = 0xFFFFFFFFu; return 0; }
-    key = ed_pg << 16 | ed_slot[ed_pg] << 8 | ed_cur[ed_pg];
+    key = ed_pg << 16 | ed_slot[ed_pg] << 8 | ed_cur[ed_pg] | ed_scr[ed_pg] << 24;
     h = pg_hash();
     if (full || key != pg_key_shown) { pg_header(); pg_fields(); pg_focus(); }
     else if (h != pg_hash_shown) { pg_header(); pg_fields(); pg_focus(); }

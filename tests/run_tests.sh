@@ -14,7 +14,7 @@ run() {                                         # (on GitHub a failure is an ann
     echo "== $name"
     if ! "$@" > "$OUT/last.log" 2>&1; then
         fail=1; cat "$OUT/last.log"
-        [ -n "$GITHUB_ACTIONS" ] && echo "::error title=$name::$(tail -c 900 "$OUT/last.log" | tr '\n' '|')"
+        if [ -n "$GITHUB_ACTIONS" ]; then echo "::error title=$name::$(tail -c 900 "$OUT/last.log" | tr '\n' '|')"; fi
     else cat "$OUT/last.log"; fi
 }
 

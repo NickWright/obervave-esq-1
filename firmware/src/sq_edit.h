@@ -121,13 +121,37 @@ static const page_t PAGES[NPG] = {
     [PG_MASTER] = {"MASTER", 1, 3, 3, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
     [PG_STORE] = {"STORAGE", 1, 2, 0, F_STO_}};
 
+/* (R4.1) screens: each page in screens of at most four fields, one under each knob (KNOB 1-4 left to right); SELECT
+ * steps through them. Field indices in hex, screens apart by '/' (ENV: the levels, the times, the two scalings) */
+static const char *const SCR[NPG] = {
+    [PG_PROG] = "", [PG_OSC] = "0123/4567", [PG_DCA] = "01/2345", [PG_FILT] = "012/3456", [PG_DCA4] = "0123",
+    [PG_ENV] = "0123/5678/49", [PG_LFO] = "0123/4567", [PG_MODES] = "0123/4567", [PG_SPLIT] = "0123/4567",
+    [PG_PERF] = "0123/4567", [PG_ARP] = "0123/4567/8", [PG_SEQ] = "0123/5678/49", [PG_MASTER] = "012/345",
+    [PG_MIDI] = "012/34", [PG_STORE] = "01"};
+static uint32_t ed_scr_n(uint32_t pg)           /* the page's screens */
+{
+    const char *c = SCR[pg];
+    uint32_t n = *c ? 1u : 0u;
+    while (*c) n += *c++ == '/';
+    return n;
+}
+static uint32_t ed_scr_fields(uint32_t pg, uint32_t sc, uint8_t *f)   /* screen sc's fields -> f[0..3]; their count */
+{
+    const char *c = SCR[pg];
+    uint32_t n = 0;
+    while (*c && sc) sc -= *c++ == '/';
+    while (*c && *c != '/' && n < 4u) { f[n++] = (uint8_t)(*c <= '9' ? *c - '0' : *c - 'a' + 10); c++; }
+    return n;
+}
+
 static const char *const SRC_NAME[16] = {"LFO1", "LFO2", "LFO3", "ENV1", "ENV2", "ENV3", "ENV4", "VEL", "VEL2", "KYBD",
                                          "KYBD2", "WHEEL", "PEDAL", "PRESS", "XCTRL", "OFF"};
 static const char *const LFOW_NAME[4] = {"TRI", "SAW", "SQR", "NOI"};
 static const char *const NOTE_NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
 /* the editor's place: the page, its slot (OSC 2 = PG_OSC, 1), the cursor (a field) */
-static uint32_t ed_pg = PG_PROG, ed_slot[NPG], ed_cur[NPG];
+static uint32_t ed_pg = PG_PROG, ed_slot[NPG], ed_cur[NPG], ed_scr[NPG];   /* ed_cur: the field ALGORITHM turns (the
+                                                 * last one a knob turned on this screen) */
 static uint8_t sq_edit_enc[ESQ_PCB_LEN];        /* sq_edit as the engine encodes it: a commit takes only the bytes an
                                                  * edit changed into the raw program, the rest stays as stored */
 static uint8_t ed_undo_pcb[ESQ_PCB_LEN], ed_has_undo, ed_comparing;

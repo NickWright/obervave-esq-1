@@ -137,6 +137,39 @@ static uint32_t prog_step(uint32_t g, int32_t d, uint32_t n)
     return (uint32_t)(((int32_t)g + d) % (int32_t)n + (int32_t)n) % n;
 }
 
+/* knob acceleration: a fast turn of a field with 32 values or more steps 2, 4 or 8 at a time */
+static int32_t accel(uint32_t enc, int32_t d, const fld_t *f)
+{
+    static uint32_t last[8];
+    uint32_t dt = fm1_ms - last[enc & 7u], m = 1;
+    int32_t span = fld_hi(f) - f->lo;
+    last[enc & 7u] = fm1_ms;
+    if (span < 31) return d;
+    if (dt < 25u) m = span >= 100 ? 8u : 4u;
+    else if (dt < 50u) m = 4;
+    else if (dt < 90u) m = 2;
+    return d * (int32_t)m;
+}
+
+/* SELECT: the screens; on the program's pages on through the next page in the ESQ-1's page-button order (OSC 1 ..
+ * SPLIT/LAYER, round), elsewhere round the page's own screens */
+static void scr_step(int32_t d)
+{
+    uint32_t pg = ed_pg, ns = ed_scr_n(pg), k, nring = 17;
+    int32_t sc = (int32_t)(ed_scr[pg] % ns) + d;
+    if (pg >= PG_OSC && pg <= PG_SPLIT) {
+        for (k = 0; k < nring && !(KEY_PG[k] == pg && KEY_SLOT[k] == ed_slot[pg] % PAGES[pg].nslot); k++) {}
+        if (k == nring) k = 0;
+        while (sc < 0 || sc >= (int32_t)ed_scr_n(KEY_PG[k])) {
+            if (sc < 0) { k = (k + nring - 1u) % nring; sc += (int32_t)ed_scr_n(KEY_PG[k]); }
+            else { sc -= (int32_t)ed_scr_n(KEY_PG[k]); k = (k + 1u) % nring; }
+        }
+        page_go(KEY_PG[k], KEY_SLOT[k]);
+        ed_scr[ed_pg] = (uint32_t)sc;
+    } else
+        ed_scr[pg] = (uint32_t)((sc % (int32_t)ns + (int32_t)ns) % (int32_t)ns);
+}
+
 /* a page button tapped: its group's pages in turn */
 static void page_button(uint32_t b)
 {
@@ -263,14 +296,16 @@ static void panel_in(void)
     }
     if (ed_pg == PG_PROG) {
         if (db && !ui_write) prog_load(prog_step(sq_cur, 10 * db, NPROG_ALL));
-    } else if (!ui_write && !sx_import) {       /* a page: the cursor, the data slider, the row's knobs */
-        const page_t *p = &PAGES[ed_pg];
-        uint32_t n = ed_nfld(ed_pg), cur = ed_cur[ed_pg] % n, row0 = cur >= p->n1 ? p->n1 : 0u,
-                 rown = cur >= p->n1 ? p->n2 : p->n1;
-        if (ds) ed_cur[ed_pg] = cur = (uint32_t)(((int32_t)cur + ds) % (int32_t)n + (int32_t)n) % n;
-        if (db) ed_turn(cur, db);
+    } else if (!ui_write && !sx_import) {       /* a page: SELECT the screens, KNOB 1-4 its fields, ALGORITHM the last turned */
+        uint8_t fi[4];
+        uint32_t n;
+        if (ds) scr_step(ds);
+        n = ed_scr_fields(ed_pg, ed_scr[ed_pg] % ed_scr_n(ed_pg), fi);
+        for (i = 0; i < n && fi[i] != ed_cur[ed_pg]; i++) {}
+        if (i == n) ed_cur[ed_pg] = fi[0];     /* (a page or screen just entered: its first field) */
+        if (db) ed_turn(ed_cur[ed_pg], accel(ENC_ALGORITHM, db, ed_fld(ed_pg, ed_cur[ed_pg])));
         for (i = 0; i < 4u; i++)
-            if (dk[i] && i < rown) { ed_turn(row0 + i, dk[i]); ed_cur[ed_pg] = row0 + i; }
+            if (dk[i] && i < n) { ed_cur[ed_pg] = fi[i]; ed_turn(fi[i], accel(ENC_KNOB1 + i, dk[i], ed_fld(ed_pg, fi[i]))); }
     }
     /* EDIT: a tap on its release; GLO: a tap on its release, held: MASTER; ARP: a tap on its release (the ARP page;
      * there: ARP on / off), held alone: LATCH on / off, held + keys: chord memory */

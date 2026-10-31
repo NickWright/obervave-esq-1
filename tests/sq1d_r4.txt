@@ -5,8 +5,7 @@
 900 btnup 7
 1000 shot
 1100 btn 7
-1200 enc 0 2
-1300 enc 1 1
+1300 enc 4 1
 1400 shot
 1500 btn 10
 1600 btn 10

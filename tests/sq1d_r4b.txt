@@ -12,8 +12,7 @@
 1100 btndown 7
 1800 btnup 7
 1900 btn 7
-1950 enc 0 2
-1960 enc 1 1
+1960 enc 4 1
 2000 btn 7
 2100 shot
 2200 btn 9
@@ -25,8 +24,8 @@
 3100 keys 0x800
 3150 keys 0
 3800 btn 13
-3900 enc 0 9
-4000 enc 1 1
+3900 enc 0 2
+4000 enc 3 1
 4100 keys 0x4000
 4200 keys 0
 4500 shot
