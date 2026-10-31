@@ -123,7 +123,7 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
 - `sq_play.h`: the playing layer, every key / MIDI note through `pl_input`: KEYS TRNSP (transpose while playing),
   chord memory, recording, arpeggiator / latch / direct. The scheduler (`pl_poll`, main loop) runs 1024 samples ahead
   at 24 PPQN (tempo, or MIDI clock F8 when CLOCK MIDI; FA / FB / FC transport), keeps pending notes in time order
-  (`pend`), hands them to the timed ring; SEND and clock out are sent from `mo` when due. Patterns `sq_pat[8]` (.pool,
+  (`pend`), hands them to the timed ring; SEND and clock out are sent from `po` when due. Patterns `sq_pat[8]` (.pool,
   520 B each: len, rate, 64 steps of 4 notes + velocity + gate in quarter steps, > 4 a tie) in the blob sectors
   (platform.c `blob_load / blob_save`, 0xF4000); SAVE on SEQ stores the current one.
 - `sq_edit.h`: pages PERFORM (program fields), ARP, SEQ (through `seq_view`), MASTER, MIDI, STORAGE (`PG_SYS`: no undo,

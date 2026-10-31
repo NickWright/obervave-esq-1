@@ -22,21 +22,21 @@ static uint32_t npend, sch_floor;               /* sch_floor: what went to the I
 static uint8_t snd[128];                        /* notes the direct path holds on (latch, release all) */
 
 /* MIDI out, sent when its time comes (SEND, clock out) */
-typedef struct { uint32_t at; uint8_t st, d1, d2, pad; } mo_t;
-#define NMO 128u
-static mo_t mo[NMO] __attribute__((section(".pool")));
-static uint32_t mo_w, mo_r;
-static void mo_put(uint32_t at, uint32_t st, uint32_t d1, uint32_t d2)
+typedef struct { uint32_t at; uint8_t st, d1, d2, pad; } po_t;
+#define NPO 128u
+static po_t po[NPO] __attribute__((section(".pool")));
+static uint32_t po_w, po_r;
+static void po_put(uint32_t at, uint32_t st, uint32_t d1, uint32_t d2)
 {
-    mo_t *m;
-    if (mo_w - mo_r >= NMO) return;
-    m = &mo[mo_w++ % NMO];
+    po_t *m;
+    if (po_w - po_r >= NPO) return;
+    m = &po[po_w++ % NPO];
     m->at = at; m->st = (uint8_t)st; m->d1 = (uint8_t)d1; m->d2 = (uint8_t)d2;
 }
-static void mo_poll(void)
+static void po_poll(void)
 {
-    while (mo_r != mo_w && (int32_t)(mo[mo_r % NMO].at - sq_clock) <= 0) {
-        const mo_t *m = &mo[mo_r++ % NMO];
+    while (po_r != po_w && (int32_t)(po[po_r % NPO].at - sq_clock) <= 0) {
+        const po_t *m = &po[po_r++ % NPO];
         midi_send(m->st, m->d1, m->d2);
     }
 }
@@ -64,12 +64,12 @@ static void pend_flush(uint32_t limit)          /* everything due before limit: 
     uint32_t k = 0, ch = sys_ochan();
     while (k < npend && (int32_t)(pend[k].at - limit) < 0) {
         const pend_t *q = &pend[k++];
-        if (q->kind == PD_CLOCK) { mo_put(q->at, 0xF8u, 0, 0); continue; }
+        if (q->kind == PD_CLOCK) { po_put(q->at, 0xF8u, 0, 0); continue; }
         if (sq_tevent(q->at, q->kind == PD_ON ? EV_ON : EV_OFF, q->note, q->kind == PD_ON ? q->vel : 0u)) {
             if (q->kind == PD_OFF) sq_note(0, q->note, 0);   /* (the ring full: an off now rather than never) */
             continue;
         }
-        if (sys.send) mo_put(q->at, (q->kind == PD_ON ? 0x90u : 0x80u) | ch, q->note, q->kind == PD_ON ? q->vel : 0u);
+        if (sys.send) po_put(q->at, (q->kind == PD_ON ? 0x90u : 0x80u) | ch, q->note, q->kind == PD_ON ? q->vel : 0u);
     }
     if (k) { uint32_t i; for (i = k; i < npend; i++) pend[i - k] = pend[i]; npend -= k; }
     if ((int32_t)(limit - sch_floor) > 0) sch_floor = limit;
@@ -422,7 +422,7 @@ static void pl_poll(void)
         }
     }
     pend_flush(horizon);
-    mo_poll();
+    po_poll();
     if (seq_play) {                             /* the step the audio is on, for the screen */
         uint32_t k;
         for (k = 0; k < 4u && k < seq_nhist; k++) {
