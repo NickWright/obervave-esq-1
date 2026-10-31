@@ -1,0 +1,34 @@
+# SQ1D R4: FX through DCA 1-3, FILTER, DCA 4; GLO: MODES, SPLIT/LAYER; GLO held: MASTER, then MIDI (SEND on), STORAGE
+# (SAVE sends INT); SEQ, REC, PLAY: real-time recording; REC off, KEYS TRNSP, a key transposes; STOP.
+200 btn 2
+300 btn 2
+400 btn 2
+500 btn 2
+600 shot
+700 btn 2
+800 btn 7
+900 shot
+1000 btn 7
+1100 btndown 7
+1800 btnup 7
+1900 btn 7
+1950 enc 0 2
+1960 enc 1 1
+2000 btn 7
+2100 shot
+2200 btn 9
+2300 btn 11
+2400 btn 13
+2500 btn 12
+2600 keys 0x80
+2700 keys 0
+3100 keys 0x800
+3150 keys 0
+3800 btn 13
+3900 enc 0 9
+4000 enc 1 1
+4100 keys 0x4000
+4200 keys 0
+4500 shot
+5000 btn 12
+5200 end

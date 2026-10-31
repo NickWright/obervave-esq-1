@@ -38,6 +38,23 @@ run "R2: WRITE, dumps out (tests/sq1d_r2.txt)" sh -c "rm -f $OUT/sq1d-out.syx; s
 # R3: the voice pages: EDIT / FX / ENV / EDIT + key, cursor, data slider, knobs, COMPARE, UNDO, WRITE of the edit
 run "R3: the voice pages (tests/sq1d_r3.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r3.txt | grep -q 'bank 0 saved'"
 
+# R4: system pages, arpeggiator, latch, chord memory, step entry, PLAY, the pattern stored, IMPORT asks (into CART A);
+# FX / GLO page order, STORAGE's dump out, real-time recording, transpose; MIDI clock in
+python3 tools/esq_syx.py bank "$OUT/sq1d-out.syx" -o "$OUT/bank40.syx" >/dev/null
+run "R4: ARP, LATCH, CHORD, SEQ step entry + PLAY + SAVE, IMPORT (tests/sq1d_r4.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r4.txt > $OUT/r4.log; \
+    grep -q 'blob 0 saved' $OUT/r4.log && grep -q 'bank 1 saved' $OUT/r4.log && \
+    [ \$(awk '\$1 < 2800 && /MIDI out 90/' $OUT/r4.log | wc -l) -ge 8 ] && grep -q '7419 ms  MIDI out 90 60' $OUT/r4.log"
+run "R4: pages, dump out, real-time recording, transpose (tests/sq1d_r4b.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r4b.txt > $OUT/r4b.log; \
+    grep -q 'sysex out: 8166 B' $OUT/r4b.log && grep -q 'MIDI out 90 67' $OUT/r4b.log"
+run "R4: MIDI clock in drives the sequencer (tests/sq1d_r4clk.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r4clk.txt > $OUT/clk.log; \
+    awk '\$1 > 2100 && /MIDI out 90 64/' $OUT/clk.log | grep -q ."
+
+python3 -c "import sys; open(sys.argv[1], 'wb').write(bytes([0xF0, 0x7D, 0x46, 0x4C, 102, 2, 0xF7]) + open(sys.argv[2], 'rb').read())" \
+    "$OUT/to_cartb.syx" "$OUT/bank40.syx"
+printf '100 sysex %s\n600 end\n' "$OUT/to_cartb.syx" > "$OUT/to_cartb.txt"
+run "R4: editor command 102 (esq_syx.py send --to cartb): a 40-program dump straight into CART B" sh -c \
+    "sh tests/run_host.sh $OUT/to_cartb.txt | grep -q 'bank 2 saved'"
+
 # the wave bank's install over SysEx (sq_waves.h) with the placeholder image: taken, CRC checked
 python3 tools/sq_waves_syx.py --placeholder "$OUT/sq_ph.syx" >/dev/null \
     && run "wave bank install (SysEx 96-99, the placeholder image)" sh -c \

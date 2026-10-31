@@ -8,6 +8,7 @@ static uint32_t pg_hash(void)                  /* a cheap sum of what the page s
 {
     uint32_t i, h = 2166136261u, n = ed_nfld(ed_pg);
     for (i = 0; i < n; i++) h = (h ^ (uint32_t)(fld_get(ed_pg, ed_slot[ed_pg], ed_fld(ed_pg, i)) + 1000)) * 16777619u;
+    if (ed_pg == PG_SEQ) h = (h ^ seq_gen) * 16777619u ^ (uint32_t)seq_play << 5 ^ (uint32_t)seq_rec << 6;
     return h ^ sq_edited << 1 ^ ed_comparing ^ (uint32_t)(fm1_ms < ui_msg_until) << 2 ^ ui_redraw << 3;
 }
 
@@ -25,9 +26,17 @@ static void pg_header(void)
     pg_title(t);
     cv_text(6, 4, &FONT_S, t, VFD);
     ui_cpy(nm, sq_edit.name, 7);
-    if (ed_comparing) { t[0] = 0; ui_cat(t, "COMPARE "); ui_cat(t, nm); }
+    if (ed_pg == PG_SEQ) {                      /* the transport, the transposition */
+        t[0] = 0;
+        ui_cat(t, seq_rec ? "REC " : "");
+        ui_cat(t, seq_play ? "PLAY" : "STOP");
+        if (seq_transp) {
+            ui_cat(t, seq_transp > 0 ? " +" : " -");
+            ui_fmt_u(t, (uint32_t)(seq_transp > 0 ? seq_transp : -seq_transp));
+        }
+    } else if (ed_comparing) { t[0] = 0; ui_cat(t, "COMPARE "); ui_cat(t, nm); }
     else { t[0] = 0; ui_cat(t, nm); if (sq_edited) ui_cat(t, "*"); }
-    cv_text(240 - 6 - text_w(&FONT_S, t), 4, &FONT_S, t, ed_comparing ? VFD : VFD_DIM);
+    cv_text(240 - 6 - text_w(&FONT_S, t), 4, &FONT_S, t, ed_comparing || (ed_pg == PG_SEQ && (seq_play || seq_rec)) ? VFD : VFD_DIM);
     cv_rect(0, 23, 240, 1, VFD_DIM);
     cv_blit(0, 0);
 }
@@ -58,12 +67,34 @@ static void pg_focus(void)
 {
     uint32_t n = ed_nfld(ed_pg), cur = ed_cur[ed_pg] % n;
     const fld_t *f = ed_fld(ed_pg, cur);
-    int32_t v = fld_get(ed_pg, ed_slot[ed_pg], f), hi = f->kind == K_WAVE ? (int32_t)sq_bank.nwaves - 1 : f->hi;
+    int32_t v = fld_get(ed_pg, ed_slot[ed_pg], f), hi = fld_hi(f);
     char t[12];
     cv_begin(240, 86, VFD_BG);
     if (fm1_ms < ui_msg_until) {                /* a message (UNDO, COPY, a received program) for 2 s */
         cv_text(8, 14, &FONT_L, ui_msg[0], VFD);
         cv_text(8, 56, &FONT_S, ui_msg[1], VFD_DIM);
+        cv_blit(0, 124);
+        return;
+    }
+    if (ed_pg == PG_SEQ) {                      /* the cursor's field on a line, under it the pattern's steps */
+        const sq_pat_t *p = seq_p();
+        uint32_t k;
+        fld_text(ed_pg, 0, f, t);
+        cv_text(8, 4, &FONT_S, f->name, VFD_DIM);
+        cv_text(232 - text_w(&FONT_S, t), 4, &FONT_S, t, VFD);
+        for (k = 0; k < SEQ_MAXLEN; k++) {     /* 4 rows of 16: a note lit, a rest a dash, the playing step hollow,
+                                                 * the cursor underlined, a tie reaching on */
+            int32_t x = 8 + (int32_t)(k % 16u) * 14, y = 26 + (int32_t)(k / 16u) * 15;
+            const sq_step_t *st = &p->s[k];
+            if (k >= p->len) { cv_rect(x + 5, y + 5, 2, 2, VFD_DIM); continue; }
+            if (st->note[0]) {
+                cv_rect(x, y, 12, 11, VFD);
+                if (st->gate > 4u) cv_rect(x + 12, y + 4, 2, 3, VFD);
+            } else
+                cv_rect(x, y + 8, 12, 3, VFD_DIM);
+            if (seq_play && k == seq_shown_pos) cv_rect(x + 3, y + 3, 6, 5, st->note[0] ? VFD_BG : VFD);
+            if (k == seq_cur) cv_rect(x, y + 12, 12, 2, VFD);
+        }
         cv_blit(0, 124);
         return;
     }

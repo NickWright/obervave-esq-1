@@ -1,0 +1,52 @@
+# SQ1D R4: GLO held (MASTER), GLO (MIDI): SEND on; ARP page, ARP on, a chord arpeggiated; LATCH (ARP held); ARP off;
+# chord memory (ARP held + C E G); LATCH off; a key plays the chord; REC: step entry (2 notes, a rest, a note), PLAY,
+# STOP, SAVE (the pattern into flash); HOME twice (PERFORM); a 40-program dump in: IMPORT asks, PRESETS: CART A, OCT+.
+200 btndown 7
+900 btnup 7
+1000 shot
+1100 btn 7
+1200 enc 0 2
+1300 enc 1 1
+1400 shot
+1500 btn 10
+1600 btn 10
+1700 keys 0x4880
+2700 shot
+2800 keys 0
+3000 btndown 10
+3800 btnup 10
+3900 keys 0x80
+4000 keys 0
+4600 shot
+4700 btn 10
+4800 btndown 10
+4900 keys 0x4880
+5000 keys 0
+5100 btnup 10
+5200 btndown 10
+5900 btnup 10
+6000 keys 0x1
+6400 keys 0
+6500 btn 13
+6600 keys 0x80
+6700 keys 0
+6800 keys 0x800
+6900 keys 0
+7000 btn 3
+7100 keys 0x4000
+7200 keys 0
+7300 shot
+7400 btn 12
+8400 shot
+9500 btn 12
+9600 btn 9
+9700 btn 13
+9800 btn 8
+9900 btn 8
+10000 shot
+10100 sysex build/host/bank40.syx
+10300 shot
+10400 enc 6 1
+10500 btn 1
+10700 shot
+11000 end

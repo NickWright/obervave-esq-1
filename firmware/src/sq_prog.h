@@ -159,6 +159,29 @@ static void sq_sx_byte(uint32_t b)
 }
 
 static void ui_say(const char *a, const char *b); /* (sq_ui.h) */
+static int imp_dest(void);                      /* (sq_sys.h) IMPORT: the set a 40-program dump goes into, -1: ask */
+static uint8_t sx_dest_once;                    /* (editor command 102) the next 40-program dump: into this set + 1 */
+static uint32_t sx_import;                      /* a 40-program dump waiting for an answer: 1 + the set proposed */
+
+/* a waiting 40-program dump into a set (0..2), stored */
+static void sx_import_to(uint32_t set)
+{
+    static const char *const INTO[3] = {"INTO INT", "INTO CART A", "INTO CART B"};
+    set %= NBANK;
+    memcpy(sq_pcb[set], rx.pcb, sizeof rx.pcb);
+    ui_say("40 PROGRAMS", set_store(set) ? "NOT STORED" : INTO[set]);
+    if (sq_cur / NSLOT == set) prog_load(sq_cur);
+    sx_import = 0;
+    RING_PUBLISH();
+    rx.ready = 0;
+}
+static void sx_import_cancel(void)
+{
+    sx_import = 0;
+    ui_say("IMPORT", "CANCELLED");
+    RING_PUBLISH();
+    rx.ready = 0;
+}
 
 /* main loop: a whole dump that arrived */
 static void sq_sx_poll(void)
@@ -173,10 +196,13 @@ static void sq_sx_poll(void)
         sq_edited = 1;
         edit_apply();
         ui_say("PROGRAM RECEIVED", "SAVE TO KEEP IT");
-    } else if (r == 2u) {                       /* all 40: INT, stored */
-        memcpy(sq_pcb[0], rx.pcb, sizeof rx.pcb);
-        ui_say("40 PROGRAMS", set_store(0) ? "INT: NOT STORED" : "INTO INT");
-        if (sq_cur / NSLOT == 0u) prog_load(sq_cur);
+    } else if (r == 2u) {                       /* all 40: into the set IMPORT says, or ask (it waits meanwhile) */
+        int d = sx_dest_once ? (int)sx_dest_once - 1 : imp_dest();
+        if (sx_import) return;
+        sx_dest_once = 0;
+        if (d < 0) { sx_import = 1; return; }
+        sx_import_to((uint32_t)d);
+        return;
     } else
         ui_say("SYSEX DUMP", "BROKEN: IGNORED");
     RING_PUBLISH();
@@ -207,6 +233,9 @@ static int sq_ed_more(uint32_t cmd, const uint8_t *a, uint32_t na)
     } else if (cmd == 101u) {                   /* the edit buffer */
         sx_out[4] = 0x01u;
         o = sx_put(o, sq_edit_pcb);
+    } else if (cmd == 102u && na >= 1u) {       /* (R4) the next 40-program dump into set a[0] (0..2), not asked */
+        sx_dest_once = (uint8_t)(a[0] % NBANK + 1u);
+        return 1;
     } else
         return 0;
     sx_out[o++] = 0xF7u;

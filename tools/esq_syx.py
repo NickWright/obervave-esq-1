@@ -6,6 +6,7 @@
   esq_syx.py send FILE.syx ... [--port NAME]    send them to the FM-1 over USB-MIDI (mido + python-rtmidi):
                                                   one program  -> the selected ESQ track (its edit buffer)
                                                   more         -> the USER bank, U01..U40, as one all-40 dump
+                                                  (SQ1D: --to int|carta|cartb, else the FM-1 asks where)
                                                   --single N   -> only program N (1-based), as a one-program dump
                                                   --bank       -> an all-40 dump even for one program
   esq_syx.py bank FILE.syx ... -o OUT.syx       write the programs as one all-40 dump (for SysEx Librarian etc.)
@@ -296,9 +297,13 @@ def cmd_send(a):
     elif len(progs) == 1 and not a.bank:
         msgs, what = [single(progs[0][1], a.channel)], f"program {progs[0][0]} (into the edit buffer)"
     else:
-        msgs, what = [bank(progs, a.channel)], f"{min(len(progs), NBANK)} programs (into INT)"
+        dest = f"into {a.to.upper()}" if a.to else "the FM-1 asks where (SQ1D R4; earlier: INT)"
+        msgs, what = [bank(progs, a.channel)], f"{min(len(progs), NBANK)} programs ({dest})"
+        if a.to:                                 # (SQ1D R4: editor command 102, the next all-40 dump's set, not asked)
+            msgs.insert(0, bytes([0xF0] + ED + [102, SETS[a.to]] + [0xF7]))
     mido, port, _ = open_ports(a)
     with mido.open_output(port) as out:
+        time.sleep(0.3)                          # (CoreMIDI drops a message sent right after opening)
         for m in msgs:
             out.send(mido.Message("sysex", data=list(m[1:-1])))
             time.sleep(a.delay / 1000)
@@ -318,6 +323,8 @@ def main():
     p.add_argument("--bank", action="store_true", help="an all-40 dump even for one program")
     p.add_argument("--channel", type=int, default=0, help="the channel nibble in the header (ignored by the FM-1)")
     p.add_argument("--delay", type=int, default=200, help="ms after each message (default 200)")
+    p.add_argument("--to", choices=["int", "carta", "cartb"],
+                   help="(SQ1D R4) an all-40 dump straight into this set; without it the FM-1 asks (IMPORT ASK)")
     p.set_defaults(fn=cmd_send)
     p = sub.add_parser("bank")
     p.add_argument("files", nargs="+")

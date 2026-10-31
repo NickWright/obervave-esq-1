@@ -1,0 +1,113 @@
+# SQ1D R4: MIDI clock in. MASTER, MIDI: SEND on, CLOCK MIDI; REC: two steps; FA, 96 ticks at 120 BPM, FC
+200 btndown 7
+900 btnup 7
+1000 btn 7
+1100 enc 0 2
+1150 enc 1 1
+1200 enc 0 1
+1250 enc 1 1
+1300 btn 13
+1350 keys 0x80
+1400 keys 0
+1450 keys 0x800
+1500 keys 0
+1600 btn 13
+2000 midi 0xFA 0 0
+2000 midi 0xF8 0 0
+2021 midi 0xF8 0 0
+2042 midi 0xF8 0 0
+2062 midi 0xF8 0 0
+2083 midi 0xF8 0 0
+2104 midi 0xF8 0 0
+2125 midi 0xF8 0 0
+2146 midi 0xF8 0 0
+2167 midi 0xF8 0 0
+2188 midi 0xF8 0 0
+2208 midi 0xF8 0 0
+2229 midi 0xF8 0 0
+2250 midi 0xF8 0 0
+2271 midi 0xF8 0 0
+2292 midi 0xF8 0 0
+2312 midi 0xF8 0 0
+2333 midi 0xF8 0 0
+2354 midi 0xF8 0 0
+2375 midi 0xF8 0 0
+2396 midi 0xF8 0 0
+2417 midi 0xF8 0 0
+2438 midi 0xF8 0 0
+2458 midi 0xF8 0 0
+2479 midi 0xF8 0 0
+2500 midi 0xF8 0 0
+2521 midi 0xF8 0 0
+2542 midi 0xF8 0 0
+2562 midi 0xF8 0 0
+2583 midi 0xF8 0 0
+2604 midi 0xF8 0 0
+2625 midi 0xF8 0 0
+2646 midi 0xF8 0 0
+2667 midi 0xF8 0 0
+2688 midi 0xF8 0 0
+2708 midi 0xF8 0 0
+2729 midi 0xF8 0 0
+2750 midi 0xF8 0 0
+2771 midi 0xF8 0 0
+2792 midi 0xF8 0 0
+2812 midi 0xF8 0 0
+2833 midi 0xF8 0 0
+2854 midi 0xF8 0 0
+2875 midi 0xF8 0 0
+2896 midi 0xF8 0 0
+2917 midi 0xF8 0 0
+2938 midi 0xF8 0 0
+2958 midi 0xF8 0 0
+2979 midi 0xF8 0 0
+3000 midi 0xF8 0 0
+3021 midi 0xF8 0 0
+3042 midi 0xF8 0 0
+3062 midi 0xF8 0 0
+3083 midi 0xF8 0 0
+3104 midi 0xF8 0 0
+3125 midi 0xF8 0 0
+3146 midi 0xF8 0 0
+3167 midi 0xF8 0 0
+3188 midi 0xF8 0 0
+3208 midi 0xF8 0 0
+3229 midi 0xF8 0 0
+3250 midi 0xF8 0 0
+3271 midi 0xF8 0 0
+3292 midi 0xF8 0 0
+3312 midi 0xF8 0 0
+3333 midi 0xF8 0 0
+3354 midi 0xF8 0 0
+3375 midi 0xF8 0 0
+3396 midi 0xF8 0 0
+3417 midi 0xF8 0 0
+3438 midi 0xF8 0 0
+3458 midi 0xF8 0 0
+3479 midi 0xF8 0 0
+3500 midi 0xF8 0 0
+3521 midi 0xF8 0 0
+3542 midi 0xF8 0 0
+3562 midi 0xF8 0 0
+3583 midi 0xF8 0 0
+3604 midi 0xF8 0 0
+3625 midi 0xF8 0 0
+3646 midi 0xF8 0 0
+3667 midi 0xF8 0 0
+3688 midi 0xF8 0 0
+3708 midi 0xF8 0 0
+3729 midi 0xF8 0 0
+3750 midi 0xF8 0 0
+3771 midi 0xF8 0 0
+3792 midi 0xF8 0 0
+3812 midi 0xF8 0 0
+3833 midi 0xF8 0 0
+3854 midi 0xF8 0 0
+3875 midi 0xF8 0 0
+3896 midi 0xF8 0 0
+3917 midi 0xF8 0 0
+3938 midi 0xF8 0 0
+3958 midi 0xF8 0 0
+3979 midi 0xF8 0 0
+4100 midi 0xFC 0 0
+4500 end

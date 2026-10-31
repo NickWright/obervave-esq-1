@@ -33,21 +33,26 @@ NickWright/obervave-esq-1 (the name is historical). Branch `esq1` keeps the earl
 | R1 (done) | Standalone app: whole-synth engine, keys / MIDI, wave bank, program select of the bank's 40 as banks of ten |
 | R2 (done) | Program memory: ROM 40 (read only), INT 40, CART A, CART B (40 each, flash); WRITE; ESQ-1 SysEx single / bank dumps in and out, requests |
 | R3 (done) | The page editor (below), VFD look, cursor + data entry, COMPARE, undo, INIT, copy OSC / ENV / LFO |
-| R4 | MODERN look (the same fields + envelope / LFO / wave graphics), system pages MASTER, MIDI, CONTROL, STORAGE |
-| R5 | Enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), arpeggiator, latch, chord memory, CC / NRPN for every parameter, velocity / pressure curves, MUTATE / RANDOM |
+| R4 (built) | CPU (the engine at -O2, its sample loop in RAM); the button layout below; PERFORM; system pages MASTER, MIDI, STORAGE; IMPORT asks; arpeggiator, latch, chord memory; a sequencer (8 patterns) |
+| R5 | MODERN look (the same fields + envelope / LFO / wave graphics); enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), arpeggiator, latch, chord memory, CC / NRPN for every parameter, velocity / pressure curves, MUTATE / RANDOM |
 | R6 | CPU on the device, factory programs, 1.0 |
 
 Not planned before 1.0: the ESQ-1's sequencer, effects.
 
 ### Controls (agreed)
 
-- Page buttons: EDIT taps OSC 1 > 2 > 3; FX taps DCA 1 > 2 > 3 > DCA 4; ENV taps ENV 1 > 4; LFO taps LFO 1 > 3; SEQ taps
-  FILTER > MODES > SPLIT/LAYER; EDIT held + a key = any page in the ESQ-1's page-button order (OSC 1-3, DCA 1-3,
-  FILTER, DCA 4, ENV 1-4, LFO 1-3, MODES, SPLIT/LAYER); GLO taps MASTER, MIDI, CONTROL, STORAGE.
+- Page buttons (R4): EDIT taps OSC 1 > 2 > 3; FX taps DCA 1 > 2 > 3 > FILTER > DCA 4; ENV taps ENV 1 > 4; LFO taps
+  LFO 1 > 3; GLO taps MODES > SPLIT/LAYER (on a system page: MASTER > MIDI > STORAGE), GLO held 0.6 s = MASTER; SEQ =
+  the sequencer page; HOME taps PROGRAM > PERFORM; ARP tap = the ARP page (there: ARP on / off), ARP held alone 0.6 s =
+  LATCH on / off, ARP held + keys = chord memory (one key: off); PLAY = sequencer play / stop; REC = record (step entry
+  when stopped, real time when playing). EDIT held + a key = any page: the ESQ-1's page-button order (OSC 1-3, DCA 1-3,
+  FILTER, DCA 4, ENV 1-4, LFO 1-3, MODES, SPLIT/LAYER), then PERFORM, ARP, SEQ, MASTER, MIDI, STORAGE.
 - SELECT turns the cursor over the page's fields (the ESQ-1's soft buttons); KNOB 1-4 edit the four fields of the
-  cursor's row; ALGORITHM is the data slider on the cursor's field; SEL pressed = COMPARE.
+  cursor's row; ALGORITHM is the data slider on the cursor's field; SEL pressed = COMPARE (step entry: a rest; with
+  keys down: the chord one step longer).
 - HOME = the program select page (a bank of ten); PRESETS = program from any page; SAVE = WRITE (SAVE, PRESETS picks
-  the slot, SAVE). ARP = the arp page, PLAY = latch, REC = chord memory. OCT- / OCT+ octave.
+  the slot, OCT+ yes, OCT- no); on SEQ SAVE stores the pattern, on STORAGE it sends the dump OUT names. EDIT held +
+  SEL / HOME / SAVE = UNDO / INIT / COPY (on SEQ: -, CLEAR the pattern, COPY it into the next). OCT- / OCT+ octave.
 - Pages keep the ESQ-1's two rows of fields; each field drawn as a large label + value (a literal 2 x 40 line is
   unreadable on 240 px).
 
@@ -102,6 +107,30 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
 - Panel (sq1d.c `panel_in`, `page_button`, `keys_in`): as agreed; EDIT is a tap on its release unless it was used as
   a modifier (`edit_used`); keys pressed with EDIT held choose a page and play nothing (`KEY_NONE`). Page LEDs lit.
 - Host: `tests/sq1d_r3.txt`.
+
+## R4 (2026-10-30)
+
+- CPU: `tools/build.py` compiles `esq/esq_engine.c` as its own object at -O2 (`-DSQ1D_ESQ_SPLIT=1`, `-include
+  esq/esq_sq1d.h`: ESQ_SPLIT, ESQ_RAMFN = section .ram_text.esq, the per-sample loop's RAM copy, build.py refuses
+  calls in it); sq1d.c stays -Os. `SQ1D_ESQ_SPLIT=0` / `SQ1D_ESQ_RAM=0` at build go back. The host keeps the unity
+  build; split and RAM copy checked bit-identical on the host (`-DSQ1D_ESQ_RAM_TEST`).
+- `sq_sys.h`: the settings record `sq_sys_t` (44 B, magic "1D1R"; R3's record carried over once): MASTER (TUNE, BEND,
+  VOL, KEY VEL, velocity / pressure curves), MIDI (channel, program change in, SEND notes out, CLOCK INT / MIDI, clock
+  out), STORAGE (IMPORT: ASK / INT / CART A / CART B; OUT: the dump SAVE sends), ARP, chord memory, tempo, swing,
+  pattern, KEYS. `sys_apply` hands TUNE / BEND / VOL to the engine (EV_SET, CC 7).
+- `sq_engine.h`: a second, timed event ring (sq_tq, sample times in `sq_clock`); the render runs in 32-sample chunks
+  and takes due events before each, so scheduled notes land within 32 samples; `sq_tdrop_all` drops the not-yet-due.
+- `sq_play.h`: the playing layer, every key / MIDI note through `pl_input`: KEYS TRNSP (transpose while playing),
+  chord memory, recording, arpeggiator / latch / direct. The scheduler (`pl_poll`, main loop) runs 1024 samples ahead
+  at 24 PPQN (tempo, or MIDI clock F8 when CLOCK MIDI; FA / FB / FC transport), keeps pending notes in time order
+  (`pend`), hands them to the timed ring; SEND and clock out are sent from `mo` when due. Patterns `sq_pat[8]` (.pool,
+  520 B each: len, rate, 64 steps of 4 notes + velocity + gate in quarter steps, > 4 a tie) in the blob sectors
+  (platform.c `blob_load / blob_save`, 0xF4000); SAVE on SEQ stores the current one.
+- `sq_edit.h`: pages PERFORM (program fields), ARP, SEQ (through `seq_view`), MASTER, MIDI, STORAGE (`PG_SYS`: no undo,
+  no COMPARE); field kinds ENUM / NOTE / Q4 / PCT / CHAN / STEP; labels and values at most 5 characters (the grid).
+- IMPORT (`sq_prog.h`): an all-40 dump goes where IMPORT says or (ASK) waits on a prompt (PRESETS / ALGORITHM the set,
+  OCT+ / OCT-); editor command 102 [set] sends the next one straight there (`esq_syx.py send --to carta`).
+- Host: `tests/sq1d_r4.txt`, `sq1d_r4b.txt`, `sq1d_r4clk.txt` (MIDI clock); the 102 check in run_tests.sh.
 
 ## The wave bank in flash (Phase 2, 2026-10-30)
 

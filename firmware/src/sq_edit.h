@@ -10,9 +10,14 @@
  * the next one. */
 #include <stddef.h>
 
-enum { PG_PROG, PG_OSC, PG_DCA, PG_FILT, PG_DCA4, PG_ENV, PG_LFO, PG_MODES, PG_SPLIT, NPG };
-enum { K_U8, K_S8, K_ONOFF, K_WAVE, K_SRC, K_LFOW, K_OCT, K_SEMI, K_PROG, K_KEY, K_DIR };
-typedef struct { const char *lab, *name; uint8_t kind; int16_t lo, hi; uint16_t off; } fld_t;
+/* the pages: the program's (OSC .. SPLIT, PERFORM: fields of the edit buffer), then (R4) the system's (ARP .. STORAGE:
+ * fields of the settings, sq_sys.h; SEQ: of the pattern and its step at the cursor, through seq_view) */
+enum { PG_PROG, PG_OSC, PG_DCA, PG_FILT, PG_DCA4, PG_ENV, PG_LFO, PG_MODES, PG_SPLIT, PG_PERF, PG_ARP, PG_SEQ, PG_MASTER,
+       PG_MIDI, PG_STORE, NPG };
+#define PG_SYS(pg) ((pg) >= PG_ARP)
+enum { K_U8, K_S8, K_ONOFF, K_WAVE, K_SRC, K_LFOW, K_OCT, K_SEMI, K_PROG, K_KEY, K_DIR, K_ENUM, K_NOTE, K_Q4, K_PCT,
+       K_CHAN, K_STEP };
+typedef struct { const char *lab, *name; uint8_t kind; int16_t lo, hi; uint16_t off; const char *const *nm; } fld_t;
 typedef struct { const char *title; uint8_t nslot, n1, n2; const fld_t *f; } page_t;   /* n1 fields on the top row, n2 under */
 
 #define F_OSC(m) offsetof(esq_osc_t, m)
@@ -64,11 +69,57 @@ static const fld_t F_SP_[] = {
     {"S/L", "SPLIT/LAYER", K_ONOFF, 0, 1, F_SP(split_layer)}, {"PRG", "S/L PROGRAM", K_PROG, 0, 119, F_SP(split_layer_prog)},
     {"KEY", "SPLIT KEY", K_KEY, 0, 127, F_SP(split_point)}, {"DIR", "SPLIT SIDE", K_DIR, 0, 1, F_SP(split_dir)}};
 
+#define F_P(m) offsetof(esq_patch_t, m)
+static const fld_t F_PERF_[] = {                /* PERFORM: the program's most played-with fields on one page */
+    {"FREQ", "FILTER CUTOFF", K_U8, 0, 127, F_P(flt.freq)}, {"Q", "RESONANCE", K_U8, 0, 31, F_P(flt.q)},
+    {"ATK", "ENV 4 ATTACK", K_U8, 0, 63, F_P(env[3].t1)}, {"REL", "ENV 4 RELEASE", K_U8, 0, 63, F_P(env[3].t4)},
+    {"LFO1", "LFO 1 RATE", K_U8, 0, 63, F_P(lfo[0].freq)}, {"GLIDE", "GLIDE", K_U8, 0, 63, F_P(modes.glide)},
+    {"LEVEL", "FINAL LEVEL", K_U8, 0, 63, F_P(dca4.level)}, {"PAN", "PAN", K_U8, 0, 15, F_P(dca4.pan)}};
+static const char *const ARPM_NAME[] = {"UP", "DOWN", "UP/DN", "RAND", "ORDER"};
+static const char *const RATE_NAME[] = {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"};
+static const char *const KEYS_NAME[] = {"PLAY", "TRNSP"};
+static const char *const CRV_NAME[] = {"LIN", "SOFT", "HARD", "FIXED"};
+static const char *const PCRV_NAME[] = {"LIN", "SOFT", "HARD", "OFF"};
+static const char *const CLK_NAME[] = {"INT", "MIDI"};
+static const char *const IMP_NAME[] = {"ASK", "INT", "CRT A", "CRT B"};
+static const char *const DMP_NAME[] = {"INT", "CRT A", "CRT B", "ROM", "EDIT"};
+#define F_S(m) offsetof(sq_sys_t, m)
+static const fld_t F_ARP_[] = {
+    {"ARP", "ARPEGGIATOR", K_ONOFF, 0, 1, F_S(arp)}, {"MODE", "ARP MODE", K_ENUM, 0, 4, F_S(amode), ARPM_NAME},
+    {"OCT", "ARP OCTAVES", K_U8, 1, 4, F_S(aoct)}, {"RATE", "ARP RATE", K_ENUM, 0, 5, F_S(arate), RATE_NAME},
+    {"GATE", "ARP GATE", K_PCT, 5, 100, F_S(agate)},
+    {"LATCH", "LATCH", K_ONOFF, 0, 1, F_S(latch)}, {"CHORD", "CHORD MEMORY", K_ONOFF, 0, 1, F_S(chord)},
+    {"TEMPO", "TEMPO (BPM)", K_U8, 40, 240, F_S(tempo)}, {"SWING", "SWING", K_PCT, 50, 75, F_S(swing)}};
+typedef struct { uint8_t patt, len, rate, tempo, swing, step, note, vel, gate, keys; } seq_view_t;
+#define F_V(m) offsetof(seq_view_t, m)
+static const fld_t F_SEQ_[] = {
+    {"PATT", "PATTERN", K_U8, 1, 8, F_V(patt)}, {"LEN", "LENGTH (STEPS)", K_U8, 1, 64, F_V(len)},
+    {"RATE", "STEP RATE", K_ENUM, 0, 5, F_V(rate), RATE_NAME}, {"TEMPO", "TEMPO (BPM)", K_U8, 40, 240, F_V(tempo)},
+    {"SWING", "SWING", K_PCT, 50, 75, F_V(swing)},
+    {"STEP", "STEP", K_STEP, 1, 64, F_V(step)}, {"NOTE", "STEP NOTE", K_NOTE, 0, 127, F_V(note)},
+    {"VEL", "STEP VELOCITY", K_U8, 1, 127, F_V(vel)}, {"GATE", "STEP GATE", K_Q4, 1, 16, F_V(gate)},
+    {"KEYS", "KEYS WHILE PLAYING", K_ENUM, 0, 1, F_V(keys), KEYS_NAME}};
+static const fld_t F_MST_[] = {
+    {"TUNE", "MASTER TUNE", K_S8, -31, 31, F_S(tune)}, {"BEND", "BEND RANGE", K_U8, 0, 12, F_S(bend)},
+    {"VOL", "VOLUME", K_U8, 0, 127, F_S(volume)},
+    {"KVEL", "KEY VELOCITY", K_U8, 1, 127, F_S(keyvel)}, {"CURVE", "VELOCITY CURVE", K_ENUM, 0, 3, F_S(velcrv), CRV_NAME},
+    {"PRESS", "PRESSURE CURVE", K_ENUM, 0, 3, F_S(prscrv), PCRV_NAME}};
+static const fld_t F_MIDI_[] = {
+    {"CHAN", "MIDI CHANNEL", K_CHAN, 0, 16, F_S(chan)}, {"PROG", "PROGRAM CHANGE IN", K_ONOFF, 0, 1, F_S(rxprog)},
+    {"SEND", "NOTES OUT", K_ONOFF, 0, 1, F_S(send)},
+    {"CLOCK", "CLOCK SOURCE", K_ENUM, 0, 1, F_S(clock), CLK_NAME}, {"CKOUT", "CLOCK OUT", K_ONOFF, 0, 1, F_S(clkout)}};
+static const fld_t F_STO_[] = {
+    {"IN 40", "40-PROGRAM DUMP IN", K_ENUM, 0, 3, F_S(imp), IMP_NAME},
+    {"OUT", "DUMP OUT: SAVE SENDS", K_ENUM, 0, 4, F_S(dump), DMP_NAME}};
+
 static const page_t PAGES[NPG] = {
     [PG_PROG] = {"PROGRAM", 1, 0, 0, 0},
     [PG_OSC] = {"OSC", 3, 4, 4, F_OSC_}, [PG_DCA] = {"DCA", 3, 2, 4, F_DCA_}, [PG_FILT] = {"FILTER", 1, 3, 4, F_FLT_},
     [PG_DCA4] = {"DCA 4", 1, 2, 2, F_D4_}, [PG_ENV] = {"ENV", 4, 5, 5, F_ENV_}, [PG_LFO] = {"LFO", 3, 4, 4, F_LFO_},
-    [PG_MODES] = {"MODES", 1, 5, 3, F_MD_}, [PG_SPLIT] = {"SPLIT/LAYER", 1, 4, 4, F_SP_}};
+    [PG_MODES] = {"MODES", 1, 5, 3, F_MD_}, [PG_SPLIT] = {"SPLIT/LAYER", 1, 4, 4, F_SP_},
+    [PG_PERF] = {"PERFORM", 1, 4, 4, F_PERF_}, [PG_ARP] = {"ARP", 1, 5, 4, F_ARP_}, [PG_SEQ] = {"SEQ", 1, 5, 5, F_SEQ_},
+    [PG_MASTER] = {"MASTER", 1, 3, 3, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
+    [PG_STORE] = {"STORAGE", 1, 2, 0, F_STO_}};
 
 static const char *const SRC_NAME[16] = {"LFO1", "LFO2", "LFO3", "ENV1", "ENV2", "ENV3", "ENV4", "VEL", "VEL2", "KYBD",
                                          "KYBD2", "WHEEL", "PEDAL", "PRESS", "XCTRL", "OFF"};
@@ -86,6 +137,44 @@ static uint32_t ed_last_fld = 0xFFFFFFFFu, ed_last_ms;
 
 static uint32_t ed_pg_now(void) { return ed_pg; }
 
+/* SEQ's fields: the pattern's and its step at the cursor, copied in before they are read, back after a turn */
+static seq_view_t seq_view;
+static void seq_view_fill(seq_view_t *v)
+{
+    const sq_pat_t *p = seq_p();
+    const sq_step_t *s = &p->s[seq_cur % SEQ_MAXLEN];
+    v->patt = sys.patt; v->len = p->len; v->rate = p->rate; v->tempo = sys.tempo; v->swing = sys.swing;
+    v->step = (uint8_t)(seq_cur + 1u); v->note = s->note[0]; v->vel = s->vel ? s->vel : 100u;
+    v->gate = s->gate ? s->gate : 3u; v->keys = sys.keys;
+}
+static void seq_view_apply(void)
+{
+    seq_view_t o, *v = &seq_view;
+    sq_pat_t *p;
+    sq_step_t *s;
+    seq_view_fill(&o);
+    seq_gen++;
+    if (v->patt != o.patt) { sys.patt = v->patt; if (seq_cur >= seq_p()->len) seq_cur = 0; return; }
+    p = seq_p();
+    if (v->len != o.len) {
+        p->len = v->len;
+        if (seq_cur >= p->len) seq_cur = (uint8_t)(p->len - 1u);
+        if (seq_pos >= p->len) seq_pos = 0;
+    }
+    if (v->rate != o.rate) p->rate = v->rate;
+    if (v->tempo != o.tempo) sys.tempo = v->tempo;
+    if (v->swing != o.swing) sys.swing = v->swing;
+    if (v->step != o.step) seq_cur = (uint8_t)(v->step - 1u);
+    if (v->keys != o.keys) { sys.keys = v->keys; seq_transp = 0; }
+    s = &p->s[seq_cur % SEQ_MAXLEN];
+    if (v->note != o.note) {                    /* "--": the step empties; from empty: C5 */
+        if (!v->note) memset(s, 0, sizeof *s);
+        else { s->note[0] = o.note ? v->note : 60u; if (!s->vel) s->vel = 100; if (!s->gate) s->gate = 3; }
+    }
+    if (v->vel != o.vel && s->note[0]) s->vel = v->vel;
+    if (v->gate != o.gate && s->note[0]) s->gate = v->gate;
+}
+
 static void ed_compare(void);
 
 static uint8_t *ed_slot_base(uint32_t pg, uint32_t slot)
@@ -98,12 +187,19 @@ static uint8_t *ed_slot_base(uint32_t pg, uint32_t slot)
     case PG_ENV: return (uint8_t *)&sq_edit.env[slot % 4u];
     case PG_LFO: return (uint8_t *)&sq_edit.lfo[slot % 3u];
     case PG_MODES: return (uint8_t *)&sq_edit.modes;
-    default: return (uint8_t *)&sq_edit.split;
+    case PG_SPLIT: return (uint8_t *)&sq_edit.split;
+    case PG_PERF: return (uint8_t *)&sq_edit;
+    case PG_SEQ: seq_view_fill(&seq_view); return (uint8_t *)&seq_view;
+    default: return (uint8_t *)&sys;
     }
 }
 static uint32_t ed_nfld(uint32_t pg) { return (uint32_t)PAGES[pg].n1 + PAGES[pg].n2; }
 static const fld_t *ed_fld(uint32_t pg, uint32_t i) { return &PAGES[pg].f[i % ed_nfld(pg)]; }
 
+static int32_t fld_hi(const fld_t *f)           /* (WAVE: the bank's waves; STEP: the pattern's length) */
+{
+    return f->kind == K_WAVE ? (int32_t)sq_bank.nwaves - 1 : f->kind == K_STEP ? (int32_t)seq_p()->len : f->hi;
+}
 static int32_t fld_get(uint32_t pg, uint32_t slot, const fld_t *f)
 {
     const uint8_t *b = ed_slot_base(pg, slot) + f->off;
@@ -119,7 +215,7 @@ static void fld_set(uint32_t pg, uint32_t slot, const fld_t *f, int32_t v)
 {
     uint8_t *b = ed_slot_base(pg, slot) + f->off;
     int32_t semi = *(const int8_t *)b, oct = semi >= 0 ? semi / 12 : -((11 - semi) / 12), st = semi - oct * 12;
-    int32_t hi = f->kind == K_WAVE ? (int32_t)sq_bank.nwaves - 1 : f->hi;
+    int32_t hi = fld_hi(f);
     v = v < f->lo ? f->lo : v > hi ? hi : v;
     switch (f->kind) {
     case K_S8: *(int8_t *)b = (int8_t)v; break;
@@ -144,6 +240,11 @@ static void fld_text(uint32_t pg, uint32_t slot, const fld_t *f, char *t)
         else ui_fmt_u(t, (uint32_t)v);
         break;
     case K_KEY: ui_cat(t, NOTE_NAME[v % 12]); ui_fmt_u(t, (uint32_t)(v / 12)); break;   /* (C5 = 60, as the ESQ-1) */
+    case K_NOTE: if (!v) ui_cat(t, "--"); else { ui_cat(t, NOTE_NAME[v % 12]); ui_fmt_u(t, (uint32_t)(v / 12)); } break;
+    case K_ENUM: ui_cat(t, f->nm[v < f->lo ? f->lo : v > f->hi ? f->hi : v]); break;
+    case K_Q4: ui_fmt_u(t, (uint32_t)v * 25u); ui_cat(t, "%"); break;
+    case K_PCT: ui_fmt_u(t, (uint32_t)v); ui_cat(t, "%"); break;
+    case K_CHAN: if (!v) ui_cat(t, "OMNI"); else ui_fmt_u(t, (uint32_t)v); break;
     case K_S8: case K_OCT:
         if (v < 0) { ui_cat(t, "-"); ui_fmt_u(t, (uint32_t)-v); }
         else { ui_cat(t, v ? "+" : ""); ui_fmt_u(t, (uint32_t)v); }
@@ -180,6 +281,15 @@ static void ed_turn(uint32_t i, int32_t d)
     uint32_t key = ed_pg << 16 | ed_slot[ed_pg] << 8 | i;
     int32_t v;
     if (ed_pg == PG_PROG || !d) return;
+    if (PG_SYS(ed_pg)) {                        /* a setting: no undo, no COMPARE, no program */
+        sq_sys_t old = sys;
+        fld_set(ed_pg, 0, f, fld_get(ed_pg, 0, f) + d);
+        if (ed_pg == PG_SEQ) seq_view_apply();
+        if (old.arp != sys.arp || old.latch != sys.latch || old.chord != sys.chord) pl_reset();
+        if (old.clock != sys.clock) seq_stop();
+        if (old.tune != sys.tune || old.bend != sys.bend || old.volume != sys.volume) sys_apply();
+        return;
+    }
     if (ed_comparing) { ed_compare(); return; }   /* (a turn ends COMPARE first, as on the ESQ-1) */
     if (key != ed_last_fld || fm1_ms - ed_last_ms > 1500u) ed_snapshot();
     ed_last_fld = key;

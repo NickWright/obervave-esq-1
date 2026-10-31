@@ -47,12 +47,19 @@ static void ui_where(char *t, uint32_t g)
     ui_fmt_u(t, g % 10u + 1u);
 }
 
+static uint32_t pl_state(void);                 /* (sq_play.h) bits: ARP, LATCH, CHORD, PLAY, REC */
+
 static void ui_header(void)
 {
     char t[24];
+    uint32_t st = pl_state(), i;
     cv_begin(240, 24, VFD_BG);
     cv_text(6, 4, &FONT_S, "SQ1D", VFD);
-    cv_text(64, 4, &FONT_S, ui_write ? "WRITE" : SET_NAME[sq_cur / NSLOT % NSET], ui_write ? VFD : VFD_DIM);
+    cv_text(64, 4, &FONT_S, ui_write ? "WRITE" : sx_import ? "IMPORT" : SET_NAME[sq_cur / NSLOT % NSET],
+            ui_write || sx_import ? VFD : VFD_DIM);
+    t[0] = 0;                                   /* what plays besides the keys: A arp, L latch, C chord, > seq, R rec */
+    for (i = 0; i < 5u; i++) if (st >> i & 1u) { char c[2] = {"ALC>R"[i], 0}; ui_cat(t, c); }
+    cv_text(136, 4, &FONT_S, t, VFD);
     t[0] = 0;
     ui_cat(t, "OCT ");
     if (ui_oct < 0) { ui_cat(t, "-"); ui_fmt_u(t, (uint32_t)-ui_oct); }
@@ -67,9 +74,14 @@ static void ui_program(int msg)
 {
     char nm[7], t[32];
     cv_begin(240, 76, VFD_BG);
-    if (msg) {
+    if (msg && !sx_import && !ui_write) {      /* (a question outranks a message) */
         cv_text((240 - text_w(&FONT_S, ui_msg[0])) / 2, 16, &FONT_S, ui_msg[0], VFD);
         cv_text((240 - text_w(&FONT_S, ui_msg[1])) / 2, 42, &FONT_S, ui_msg[1], VFD_DIM);
+    } else if (sx_import) {                    /* a 40-program dump in: where to (IMPORT ASK) */
+        cv_text(8, 4, &FONT_S, "IMPORT 40 PROGRAMS", VFD);
+        cv_text(8, 26, &FONT_S, "INTO", VFD_DIM);
+        cv_text(56, 26, &FONT_S, SET_NAME[(sx_import - 1u) % 3u], VFD);
+        cv_text(8, 50, &FONT_S, "OCT+: YES    OCT-: NO", VFD_DIM);
     } else if (ui_write) {
         uint32_t g = ui_write - 1u;
         cv_text(8, 4, &FONT_S, "WRITE", VFD);
@@ -98,7 +110,15 @@ static void ui_bank(uint32_t cur)
         uint32_t g = b0 + k, sel = g == cur;
         int32_t x = k < 5u ? 4 : 124, y = 6 + (int32_t)(k % 5u) * 20;
         char nm[7], t[12];
-        prog_name(g, nm);
+        if (sx_import) {                        /* (the dump's own programs) */
+            esq_patch_t pp;
+            uint32_t j;
+            esq_patch_from_pcb(&pp, rx.pcb[g % NSLOT]);
+            for (j = 0; j < 6u && pp.name[j]; j++) nm[j] = pp.name[j];
+            for (; j < 6u; j++) nm[j] = ' ';
+            nm[6] = 0;
+        } else
+            prog_name(g, nm);
         t[0] = 0;
         ui_fmt_u(t, k + 1u);
         if (sel) cv_rect(x - 2, y - 1, 114, 18, VFD_SEL_BG);
@@ -134,9 +154,10 @@ static uint32_t ui_mode_shown = 99u;
 static void ui_draw(int full)
 {
     uint32_t i, changed = 0, msg = fm1_ms < ui_msg_until, cur = ui_write ? ui_write - 1u : sq_cur;
-    uint32_t key = cur | (uint32_t)msg << 9 | (uint32_t)(ui_write != 0) << 10 | (uint32_t)sq_edited << 11;
-    uint32_t hkey = (uint32_t)(ui_oct + 8) | (cur / NSLOT) << 4 | (uint32_t)(ui_write != 0) << 8;
-    uint32_t mode = ed_pg_now() && !ui_write;   /* a voice page (a message in its focus area), or the program page */
+    uint32_t key = cur | (uint32_t)msg << 9 | (uint32_t)(ui_write != 0) << 10 | (uint32_t)sq_edited << 11 | sx_import << 12;
+    uint32_t hkey = (uint32_t)(ui_oct + 8) | (cur / NSLOT) << 4 | (uint32_t)(ui_write != 0) << 8 | pl_state() << 9 |
+                    (uint32_t)(sx_import != 0) << 14;
+    uint32_t mode = ed_pg_now() && !ui_write && !sx_import;   /* a voice page (a message in its focus area), or the program page */
     if (mode != ui_mode_shown) { ui_mode_shown = mode; full = 1; }
     if (full) { lcd_fill(0, 0, 240, 240, VFD_BG); ui_hdr_key = ui_shown_key = 0xFFFFFFFFu; }
     if (mode) (void)ui_page_draw(full);
