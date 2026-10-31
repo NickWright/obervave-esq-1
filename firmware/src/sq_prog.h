@@ -116,20 +116,35 @@ static int prog_write(uint32_t g)
 
 /* ---- SysEx in: the ESQ-1's dumps, a byte at a time (context: the USB poll, in TIMER5 / the audio ISR) */
 enum { SX_IDLE, SX_HDR, SX_DATA, SX_SKIP };
+/* (after Felucca-ESQ v6.5.2) a dump survives another sender's whole SysEx message inside it (F0 .. F7 from another app
+ * on the computer: CoreMIDI interleaves them between a long message's packets): stepped over. A broken dump says why */
+enum { SXW_NONE, SXW_LENGTH, SXW_BYTE, SXW_CUT };
 static struct {
     uint8_t pcb[NSLOT][ESQ_PCB_LEN];            /* the programs as received */
-    uint16_t nib, want;
-    uint8_t st, hdr, lo, code, bad;
+    uint16_t nib, want, at;                     /* nibbles so far / the message's; (broken) where */
+    uint8_t st, hdr, lo, code, nest, why;
+    uint32_t t_ms;                              /* the last byte's time */
     volatile uint8_t ready;                     /* 1 one program, 2 all 40, 3 a broken ESQ-1 dump: the main loop's turn */
 } rx __attribute__((section(".pool")));
 
 static void sq_sx_byte(uint32_t b)
 {
+    uint32_t gap;
     if (b >= 0xF8u) return;                     /* realtime may come anywhere */
-    if (b == 0xF0u) { rx.st = rx.ready ? SX_SKIP : SX_HDR; rx.hdr = 0; rx.bad = 0; return; }
+    gap = fm1_ms - rx.t_ms;
+    rx.t_ms = fm1_ms;
+    if (rx.st == SX_DATA && (b == 0xF0u || rx.nest) && (b != 0xF0u || gap < 1000u)) {
+        if (b == 0xF0u || b == 0xF7u) rx.nest = b == 0xF0u;   /* another sender's message inside the dump */
+        return;                                 /* (an F0 after a second's silence: a new message, this one abandoned) */
+    }
+    if (b == 0xF0u) { rx.st = rx.ready ? SX_SKIP : SX_HDR; rx.hdr = 0; rx.nest = 0; return; }
     if (b & 0x80u) {                            /* F7 or any status: the message ends */
         if (rx.st == SX_DATA) {
-            int whole = b == 0xF7u && !rx.bad && rx.nib == rx.want;
+            int whole = b == 0xF7u && rx.nib == rx.want;
+            if (!whole) {
+                if (rx.nib == 0xFFFFu) rx.why = SXW_BYTE;
+                else { rx.why = b == 0xF7u ? SXW_LENGTH : SXW_CUT; rx.at = rx.nib; }
+            }
             RING_PUBLISH();
             rx.ready = whole ? rx.code : 3u;
         }
@@ -148,7 +163,11 @@ static void sq_sx_byte(uint32_t b)
         }
         return;
     case SX_DATA:
-        if (b > 0x0Fu || rx.nib >= rx.want) { rx.bad = 1; return; }
+        if (b > 0x0Fu || rx.nib >= rx.want) {   /* not a nibble, or one too many */
+            if (rx.nib != 0xFFFFu) rx.at = rx.nib;
+            rx.nib = 0xFFFFu;
+            return;
+        }
         if (!(rx.nib & 1u)) rx.lo = (uint8_t)b;
         else rx.pcb[rx.nib / (2u * ESQ_PCB_LEN)][(rx.nib >> 1) % ESQ_PCB_LEN] = (uint8_t)(rx.lo | b << 4);
         rx.nib++;
@@ -203,8 +222,23 @@ static void sq_sx_poll(void)
         if (d < 0) { sx_import = 1; return; }
         sx_import_to((uint32_t)d);
         return;
-    } else
-        ui_say("SYSEX DUMP", "BROKEN: IGNORED");
+    } else {                                    /* why, and where: "LENGTH 8100/8160", "BAD BYTE AT 512", "CUT AT 300" */
+        char t[20];
+        uint32_t i = 0, v, k;
+        const char *w = rx.why == SXW_LENGTH ? "LENGTH " : rx.why == SXW_BYTE ? "BAD BYTE AT " : "CUT AT ";
+        while (*w) t[i++] = *w++;
+        for (k = 0; k < 2u; k++) {
+            char d[6];
+            uint32_t n = 0;
+            v = k ? rx.want : rx.at;
+            do { d[n++] = (char)('0' + v % 10u); v /= 10u; } while (v);
+            while (n && i < sizeof t - 1u) t[i++] = d[--n];
+            if (k || rx.why != SXW_LENGTH) break;
+            t[i++] = '/';
+        }
+        t[i] = 0;
+        ui_say("DUMP BROKEN", t);
+    }
     RING_PUBLISH();
     rx.ready = 0;
 }

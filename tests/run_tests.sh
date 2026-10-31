@@ -52,6 +52,11 @@ run "R4: MIDI clock in drives the sequencer (tests/sq1d_r4clk.txt)" sh -c "sh te
 python3 -c "import sys; open(sys.argv[1], 'wb').write(bytes([0xF0, 0x7D, 0x46, 0x4C, 102, 2, 0xF7]) + open(sys.argv[2], 'rb').read())" \
     "$OUT/to_cartb.syx" "$OUT/bank40.syx"
 printf '100 sysex %s\n600 end\n' "$OUT/to_cartb.syx" > "$OUT/to_cartb.txt"
+python3 -c "import sys; d = open(sys.argv[2], 'rb').read(); open(sys.argv[1], 'wb').write(d[:3000] + bytes([0xF0, 0x7D, 0x46, 0x4C, 0x63, 0xF7]) + d[3000:])" \
+    "$OUT/nested.syx" "$OUT/bank40.syx"
+printf '100 sysex %s\n500 btn 1\n800 end\n' "$OUT/nested.syx" > "$OUT/nested.txt"
+run "R4.1: a 40-program dump with another sender's SysEx inside it is still taken" sh -c \
+    "sh tests/run_host.sh $OUT/nested.txt | grep -q 'bank 0 saved'"
 run "R4: editor command 102 (esq_syx.py send --to cartb): a 40-program dump straight into CART B" sh -c \
     "sh tests/run_host.sh $OUT/to_cartb.txt | grep -q 'bank 2 saved'"
 
