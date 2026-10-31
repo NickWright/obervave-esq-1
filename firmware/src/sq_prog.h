@@ -53,6 +53,8 @@ static void prog_name(uint32_t g, char *out7)  /* 6 characters + NUL */
 }
 
 static void ed_track_lost(void);                /* (sq_edit.h) */
+static void ed_keep_aside(void);                /* (sq_edit.h) an edited program, before another is loaded */
+static void ed_keep_drop(void);                 /* (sq_edit.h) the edit buffer is written or replaced */
 static void edit_apply(void)                    /* the edit buffer to the engine */
 {
     uint32_t f = SQ_CLI();
@@ -62,6 +64,7 @@ static void edit_apply(void)                    /* the edit buffer to the engine
 }
 static void prog_load(uint32_t g)
 {
+    ed_keep_aside();
     sq_cur = g % NPROG_ALL;
     prog_pcb(sq_cur, sq_edit_pcb);
     esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
@@ -111,6 +114,7 @@ static int prog_write(uint32_t g)
     if (set_store(set)) return -2;
     sq_cur = g;
     sq_edited = 0;
+    ed_keep_drop();
     return 0;
 }
 
@@ -213,6 +217,7 @@ static void sq_sx_poll(void)
         esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
         ed_track_lost();
         sq_edited = 1;
+        ed_keep_drop();
         edit_apply();
         ui_say("PROGRAM RECEIVED", "SAVE TO KEEP IT");
     } else if (r == 2u) {                       /* all 40: into the set IMPORT says, or ask (it waits meanwhile) */

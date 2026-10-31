@@ -134,8 +134,13 @@ static uint8_t ed_undo_pcb[ESQ_PCB_LEN], ed_has_undo, ed_comparing;
 static esq_patch_t ed_cmp_edit;                 /* COMPARE: the edits, kept aside while the stored program is shown */
 static uint8_t ed_cmp_pcb[ESQ_PCB_LEN], ed_cmp_enc[ESQ_PCB_LEN], ed_cmp_edited;
 static uint32_t ed_last_fld = 0xFFFFFFFFu, ed_last_ms;
+/* the edit buffer outlives a program change, as on the ESQ-1: the edited program waits here (and where it came from)
+ * until another program is edited or it is written; COMPARE on a program not edited brings it back */
+static uint8_t ed_keep_pcb[ESQ_PCB_LEN], ed_keep;
+static uint32_t ed_keep_from;
 
 static uint32_t ed_pg_now(void) { return ed_pg; }
+static uint32_t ed_cmp_now(void) { return ed_comparing; }
 
 /* SEQ's fields: the pattern's and its step at the cursor, copied in before they are read, back after a turn */
 static seq_view_t seq_view;
@@ -175,7 +180,7 @@ static void seq_view_apply(void)
     if (v->gate != o.gate && s->note[0]) s->gate = v->gate;
 }
 
-static void ed_compare(void);
+static int ed_compare(void);
 
 static uint8_t *ed_slot_base(uint32_t pg, uint32_t slot)
 {
@@ -253,6 +258,17 @@ static void fld_text(uint32_t pg, uint32_t slot, const fld_t *f, char *t)
     }
 }
 
+static void ed_keep_drop(void) { ed_keep = 0; }
+static void ed_keep_aside(void)
+{
+    if (ed_comparing) {                         /* (the edits wait in the COMPARE copy) */
+        if (ed_cmp_edited) { memcpy(ed_keep_pcb, ed_cmp_pcb, ESQ_PCB_LEN); ed_keep = 1; ed_keep_from = sq_cur; }
+    } else if (sq_edited) {
+        memcpy(ed_keep_pcb, sq_edit_pcb, ESQ_PCB_LEN);
+        ed_keep = 1;
+        ed_keep_from = sq_cur;
+    }
+}
 /* after a load or a receive: the engine's encoding of what was loaded (edit_commit compares against it) */
 static void ed_track_lost(void)
 {
@@ -270,6 +286,7 @@ static void edit_commit(void)
         if (n[i] != sq_edit_enc[i]) sq_edit_pcb[i] = n[i];
     memcpy(sq_edit_enc, n, ESQ_PCB_LEN);
     sq_edited = 1;
+    ed_keep = 0;                                /* (this program is the edit buffer now) */
     edit_apply();
 }
 static void ed_snapshot(void) { memcpy(ed_undo_pcb, sq_edit_pcb, ESQ_PCB_LEN); ed_has_undo = 1; }
@@ -312,8 +329,20 @@ static void ed_turn(uint32_t i, int32_t d)
 
 /* COMPARE: the program as stored in its slot against the edit buffer, sound and pages both; again to swap back. The
  * edits wait aside meanwhile, untouched */
-static void ed_compare(void)
+static int ed_compare(void)                      /* 0: nothing to compare (not edited, no edit kept) */
 {
+    if (!ed_comparing && !sq_edited) {          /* not edited: the edit buffer kept from another program comes back */
+        if (!ed_keep) return 0;
+        sq_cur = ed_keep_from;
+        memcpy(sq_edit_pcb, ed_keep_pcb, ESQ_PCB_LEN);
+        esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+        esq_patch_to_pcb(&sq_edit, sq_edit_enc);
+        sq_edited = 1;
+        ed_keep = 0;
+        ed_last_fld = 0xFFFFFFFFu;
+        edit_apply();
+        return 2;
+    }
     if (!ed_comparing) {
         ed_cmp_edit = sq_edit;
         memcpy(ed_cmp_pcb, sq_edit_pcb, ESQ_PCB_LEN);
@@ -333,6 +362,7 @@ static void ed_compare(void)
     }
     ed_last_fld = 0xFFFFFFFFu;
     edit_apply();
+    return 1;
 }
 static void ed_undo(void)                       /* swaps: UNDO again is REDO */
 {
@@ -344,6 +374,7 @@ static void ed_undo(void)                       /* swaps: UNDO again is REDO */
     esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
     esq_patch_to_pcb(&sq_edit, sq_edit_enc);
     sq_edited = 1;
+    ed_keep = 0;
     ed_last_fld = 0xFFFFFFFFu;
     edit_apply();
 }
@@ -354,6 +385,7 @@ static void ed_init(void)                       /* INIT: the plain program (kept
     esq_patch_to_pcb(&sq_edit, sq_edit_pcb);
     memcpy(sq_edit_enc, sq_edit_pcb, ESQ_PCB_LEN);
     sq_edited = 1;
+    ed_keep = 0;
     ed_last_fld = 0xFFFFFFFFu;
     edit_apply();
 }

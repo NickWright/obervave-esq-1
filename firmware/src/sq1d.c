@@ -246,8 +246,11 @@ static void panel_in(void)
             if (seq_rec && !seq_play) {         /* step entry: a rest, or (keys down) the chord one step longer */
                 if (pl_down && ent_n) ent_ties++;
                 else seq_rest();
-            } else
-                ed_compare();
+            } else {
+                int r = ed_compare();
+                if (!r) ui_say("COMPARE", "NOT EDITED");
+                else if (r == 2) ui_say("EDIT RECALLED", "C* AGAIN");
+            }
         }
         if (press >> BTN_PLAY & 1u) { if (seq_play) seq_stop(); else seq_start(1); }
         if (press >> BTN_REC & 1u) {

@@ -1,0 +1,15 @@
+# SQ1D R4.1 COMPARE: an edit (C*), COMPARE (the stored), back; another program (the edit kept), COMPARE: the edit back
+1000 keys 0x91
+1100 btn 6
+1200 enc 2 3
+1300 shot
+1400 btn 3
+1500 shot
+1600 btn 3
+1700 enc 6 1
+1800 shot
+1900 btn 3
+2000 shot
+2100 btn 8
+2200 shot
+2500 end

@@ -24,6 +24,7 @@ static void pg_header(void)
     char t[24], nm[8];
     cv_begin(240, 24, VFD_BG);
     pg_title(t);
+    if (sq_edited && !ed_comparing && !PG_SYS(ed_pg)) ui_cat(t, "  C*");   /* (the ESQ-1's change marker, every page) */
     cv_text(6, 4, &FONT_S, t, VFD);
     ui_cpy(nm, sq_edit.name, 7);
     if (ed_pg == PG_SEQ) {                      /* the transport, the transposition */
@@ -34,8 +35,8 @@ static void pg_header(void)
             ui_cat(t, seq_transp > 0 ? " +" : " -");
             ui_fmt_u(t, (uint32_t)(seq_transp > 0 ? seq_transp : -seq_transp));
         }
-    } else if (ed_comparing) { t[0] = 0; ui_cat(t, "COMPARE "); ui_cat(t, nm); }
-    else { t[0] = 0; ui_cat(t, nm); if (sq_edited) ui_cat(t, "*"); }
+    } else if (ed_comparing) { t[0] = 0; ui_cat(t, "COMPARE"); }
+    else { t[0] = 0; ui_cat(t, nm); }
     cv_text(240 - 6 - text_w(&FONT_S, t), 4, &FONT_S, t, ed_comparing || (ed_pg == PG_SEQ && (seq_play || seq_rec)) ? VFD : VFD_DIM);
     cv_rect(0, 23, 240, 1, VFD_DIM);
     cv_blit(0, 0);

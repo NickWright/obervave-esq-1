@@ -48,6 +48,7 @@ static void ui_where(char *t, uint32_t g)
 }
 
 static uint32_t pl_state(void);                 /* (sq_play.h) bits: ARP, LATCH, CHORD, PLAY, REC */
+static uint32_t ed_cmp_now(void);               /* (sq_edit.h) COMPARE is on */
 
 static void ui_header(void)
 {
@@ -92,7 +93,8 @@ static void ui_program(int msg)
         cv_text(8, 50, &FONT_S, "OCT+: YES    OCT-: NO", VFD_DIM);
     } else {
         ui_where(t, sq_cur);
-        if (sq_edited) ui_cat(t, "  EDITED");
+        if (ed_cmp_now()) ui_cat(t, "  COMPARE");
+        else if (sq_edited) ui_cat(t, "  C*");   /* (the ESQ-1's change marker) */
         cv_text(8, 6, &FONT_S, t, VFD_DIM);
         ui_cpy(nm, sq_edit.name, sizeof nm);
         cv_text((240 - text_w(&FONT_L, nm)) / 2, 30, &FONT_L, nm, VFD);
@@ -154,7 +156,8 @@ static uint32_t ui_mode_shown = 99u;
 static void ui_draw(int full)
 {
     uint32_t i, changed = 0, msg = fm1_ms < ui_msg_until, cur = ui_write ? ui_write - 1u : sq_cur;
-    uint32_t key = cur | (uint32_t)msg << 9 | (uint32_t)(ui_write != 0) << 10 | (uint32_t)sq_edited << 11 | sx_import << 12;
+    uint32_t key = cur | (uint32_t)msg << 9 | (uint32_t)(ui_write != 0) << 10 | (uint32_t)sq_edited << 11 | sx_import << 12 |
+                   ed_cmp_now() << 13;
     uint32_t hkey = (uint32_t)(ui_oct + 8) | (cur / NSLOT) << 4 | (uint32_t)(ui_write != 0) << 8 | pl_state() << 9 |
                     (uint32_t)(sx_import != 0) << 14;
     uint32_t mode = ed_pg_now() && !ui_write && !sx_import;   /* a voice page (a message in its focus area), or the program page */
