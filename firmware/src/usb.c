@@ -742,6 +742,12 @@ static void midi_in_event(uint32_t pkt)
             sysex_byte((uint8_t)(pkt >> (8u * (k + 1u))));
         return;
     }
+    if (cin == 0xFu && (st < 0x80u || st == 0xF0u || st == 0xF7u)) {   /* (SQ1D) a single byte (CIN F) inside a SysEx:
+                                                       * macOS sends one at the end of every 256-byte buffer of a long
+                                                       * one (SysEx Librarian: 31 of an ESQ-1 bank's bytes were lost) */
+        sysex_byte((uint8_t)st);
+        return;
+    }
     if (st >= 0x80u && st < 0xF8u) {                   /* channel / system common also ends a SysEx */
         usb.sx_on = 0;
 #if FELUCCA_OTA
