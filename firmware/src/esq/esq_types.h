@@ -87,6 +87,31 @@ typedef struct {                 /* kept for SysEx round trips; the engine plays
     uint8_t split_layer, split_layer_prog;
 } esq_split_t;
 
+/* (SQ1D R5) the extension block: what the 102-byte program has no room for. All zero is the original exactly.
+ * Sources here: 0 OFF, 1..15 the ESQ-1's (LFO1 .. XCTRL, its index + 1), then RAND (per note, -127..127), ALT (0 / 127
+ * on alternate notes), RR4 (0, 42, 85, 127 round the notes), ZONE (127 at and above ZONE KEY, else 0) */
+enum { ESQ_XS_OFF, ESQ_XS_RAND = 16, ESQ_XS_ALT, ESQ_XS_RR4, ESQ_XS_ZONE, ESQ_NXS };
+enum { ESQ_XD_OFF, ESQ_XD_PITCH, ESQ_XD_CUTOFF, ESQ_XD_Q, ESQ_XD_LEVEL, ESQ_XD_PAN, ESQ_XD_LFO1, ESQ_XD_SCAN, ESQ_NXD };
+enum { ESQ_LSH_WAV, ESQ_LSH_SINE, ESQ_LSH_RAMPDN, ESQ_LSH_SH, ESQ_LSH_SMOOTH, ESQ_LSH_DRUNK, ESQ_NLSH };
+#define ESQ_NSYNC 10             /* LFO SYNC: 0 FREQ, 1..9 4/1 2/1 1/1 1/2 1/4 1/8 1/16 1/4T 1/8T */
+typedef struct {
+    uint8_t lfo_shape[3];        /* ESQ_LSH_*: 0 the WAV field's */
+    uint8_t lfo_sync[3];         /* 0: FREQ; else a note value at the tempo (esq_synth_t.tempo) */
+    uint8_t lfo_oneshot;         /* bit l: one cycle, then it holds */
+    uint8_t env_loop;            /* bit e: while the key is held, segments 1..3 again and again */
+    uint8_t q_src;               /* Q modulation: source (ESQ_XS_*), amount -63..63 */
+    int8_t q_amt;
+    uint8_t scan_src[3];         /* wave scanning: each oscillator's wave moves by source x amount (63: 15 waves) */
+    int8_t scan_amt[3];
+    uint8_t uni;                 /* unison: voices a note (0, 1: one) */
+    uint8_t uni_det;             /* .. detune of the outer voices, cents */
+    uint8_t drift;               /* 0..63: each voice card's own tuning and cutoff, and a slow wander */
+    uint8_t xm_src[2], xm_dst[2];   /* two more modulations: any source to ESQ_XD_* */
+    int8_t xm_amt[2];
+    uint8_t zone_key;            /* ZONE's split key */
+    uint8_t pad[6];
+} esq_ext_t;                     /* 32 bytes */
+
 typedef struct {
     char name[7];                /* 6 characters + NUL */
     esq_osc_t osc[3];
@@ -97,6 +122,7 @@ typedef struct {
     esq_lfo_t lfo[3];
     esq_modes_t modes;
     esq_split_t split;
+    esq_ext_t x;                 /* (SQ1D R5) not in the PCB: esq_patch_from_pcb leaves it zero */
 } esq_patch_t;
 
 #endif

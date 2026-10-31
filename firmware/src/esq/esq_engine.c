@@ -310,7 +310,8 @@ static void esq_env_release(esq_envst_t *e, const esq_env_t *p)
     esq_env_seg(e, 5, p->t4 & 63, 0);
 }
 
-static void esq_env_tick(esq_envst_t *e, const esq_env_t *p, const esq_voice_t *v, int cycle)
+ESQ_COLD static void esq_env_start(esq_envst_t *e, const esq_env_t *p, const esq_voice_t *v, int from_zero);
+static void esq_env_tick(esq_envst_t *e, const esq_env_t *p, const esq_voice_t *v, int cycle, int loop)
 {
     int lvl, t;
     if (e->stage == 0 || e->stage == 4)
@@ -332,7 +333,9 @@ static void esq_env_tick(esq_envst_t *e, const esq_env_t *p, const esq_voice_t *
         esq_env_seg(e, 3, t < 0 ? 0 : t, esq_env_level(p, v, p->l3));
         break;
     case 3:
-        if (e->target == 0)
+        if (loop && v->gate)
+            esq_env_start(e, p, v, 0);                     /* (R5) LOOP: segment 1 again, from where it is */
+        else if (e->target == 0)
             e->stage = 0;                                  /* sustain level 0: done */
         else if (cycle)
             esq_env_release(e, p);                         /* CYC: no sustain */
@@ -354,11 +357,20 @@ ESQ_COLD static void esq_lfo_start(esq_lfost_t *l, const esq_lfo_t *p)
     l->mask = (uint8_t)(esq_lfo_slow[l->rate <= 6 ? l->rate : 0] | (p->human ? 0x80 : 0));
     if (p->reset)
         l->phase = 0;
+    l->ph16 = (uint16_t)(l->phase << 8);                 /* (R5) SYNC starts where the phase is; a one-shot runs again */
+    l->done = 0;
 }
 
-static void esq_lfo_tick(esq_lfost_t *l, const esq_lfo_t *p, int src)
+/* (R5) SYNC: a note value in twelfths of a beat (4/1 .. 1/16, 1/4T, 1/8T) */
+static const uint8_t esq_sync_units[ESQ_NSYNC] = {0, 192, 96, 48, 24, 12, 6, 3, 8, 4};
+static int8_t esq_rand8(uint32_t *r) { *r = *r * 1664525u + 1013904223u; return (int8_t)(*r >> 24); }   /* (R5's own:
+                                                          * the original's random sequences stay as they were) */
+/* sh: ESQ_LSH_* (0: the WAV field's); sync: 0 FREQ, else ESQ_NSYNC's; tempo BPM; one: one-shot; rofs: a rate offset */
+static void esq_lfo_tick(esq_lfost_t *l, const esq_lfo_t *p, int src, uint32_t sh, uint32_t sync, uint32_t tempo,
+                         uint32_t one, int rofs, uint32_t *rng)
 {
     int target = (p->l2 & 63) * 2, step = p->delay & 63, lev, w;
+    uint32_t was = l->phase, wrapped;
     /* the L1 -> L2 ramp, then HUMAN's drift */
     if (l->level != target) {
         if (step) {
@@ -370,12 +382,43 @@ static void esq_lfo_tick(esq_lfost_t *l, const esq_lfo_t *p, int src)
         l->rate = (int16_t)esq_clampi(l->rate + esq_drift[l->ctr], 0, 70);
     }
     lev = esq_clampi(l->level + (src > 0 ? src : 0), 0, 255);
-    if (l->rate > 6)
-        l->phase = (uint8_t)(l->phase + l->rate - 6);
-    else {
-        int c = l->mask & 1;
-        l->mask = (uint8_t)((l->mask & 0x80) | (c << 6) | ((l->mask & 0x7F) >> 1));
-        l->phase = (uint8_t)(l->phase + c);
+    if (l->done)
+        ;                                                 /* (a one-shot that has run: held at its end) */
+    else if (sync && sync < ESQ_NSYNC && tempo) {         /* (R5) SYNC: 65536 a cycle, a 10 ms tick's share of it */
+        l->ph16 = (uint16_t)(l->ph16 + (tempo * 131072u) / (esq_sync_units[sync] * 1000u));
+        l->phase = (uint8_t)(l->ph16 >> 8);
+    } else {
+        int r = esq_clampi(l->rate + rofs, 0, 70);
+        if (r > 6)
+            l->phase = (uint8_t)(l->phase + r - 6);
+        else {
+            int c = l->mask & 1;
+            l->mask = (uint8_t)((l->mask & 0x80) | (c << 6) | ((l->mask & 0x7F) >> 1));
+            l->phase = (uint8_t)(l->phase + c);
+        }
+    }
+    wrapped = l->phase < was;
+    if (wrapped && one) {                                 /* (R5) ONE-SHOT: the cycle's end, held */
+        l->done = 1;
+        l->phase = 255;
+    }
+    if (wrapped)
+        switch (sh) {                                     /* (R5) the random shapes: a new value a cycle */
+        case ESQ_LSH_SH: l->r0 = esq_rand8(rng); break;
+        case ESQ_LSH_SMOOTH: l->r0 = l->r1; l->r1 = esq_rand8(rng); break;
+        case ESQ_LSH_DRUNK: l->r0 = l->r1; l->r1 = (int8_t)esq_clampi(l->r1 + (esq_rand8(rng) >> 2), -127, 127); break;
+        default: break;
+        }
+    if (sh) {
+        int a = (int)l->phase - 128;
+        switch (sh) {
+        case ESQ_LSH_SINE: w = esq_clampi(-(a * (128 - (a < 0 ? -a : a))) / 32, -127, 127); break;
+        case ESQ_LSH_RAMPDN: w = 127 - (int)l->phase; break;
+        case ESQ_LSH_SH: w = l->r0; break;
+        default: w = l->r0 + (((l->r1 - l->r0) * (int)l->phase) >> 8); break;   /* SMOOTH, DRUNK */
+        }
+        l->out = (int8_t)esq_asr8(w * lev);
+        return;
     }
     switch (p->wave & 3) {
     case ESQ_LFO_TRI: {
@@ -434,17 +477,32 @@ static inline int esq_mod(const esq_mod_t *m, const int *src, int scale)
     return src[m->src & 15] * esq_clampi(m->amt, -63, 63) * scale;
 }
 
+/* (R5) an extension source (ESQ_XS_*): 0 OFF, 1..15 the ESQ-1's, then RAND, ALT, RR4, ZONE */
+static int esq_xsrc(const esq_synth_t *s, const esq_voice_t *v, const int *src, uint32_t x)
+{
+    if (x == 0 || x >= ESQ_NXS)
+        return 0;
+    if (x < 16u)
+        return src[x - 1u];
+    switch (x) {
+    case ESQ_XS_RAND: return v->xrnd;
+    case ESQ_XS_ALT: return v->xalt;
+    case ESQ_XS_RR4: return v->xrr;
+    default: return v->note >= s->patch.x.zone_key ? 127 : 0;   /* ZONE */
+    }
+}
+
 static void esq_voice_tick(esq_synth_t *s, esq_voice_t *v)
 {
     const esq_patch_t *p = &s->patch;
-    int src[ESQ_NSRC], e, o, d, f, idx;
+    int src[ESQ_NSRC], e, o, d, f, idx, xm[ESQ_NXD], pdrift = 0;
     s->ticks++;                                           /* (v6.6: per synth: two cores may tick two parts at once) */
     /* the key (with the glide still to go), not the host's pitch modulation: the OS picks a wave's zone (and KYBD) from
      * the note + transpose, so vibrato, bend, tune or DRIFT's wander never flip a multisampled wave between zones */
     int note = esq_clampi((v->note * 256 + v->gnote - v->gtarget) >> 8, 0, 127);
 
     for (e = 0; e < 4; e++)
-        esq_env_tick(&v->env[e], &p->env[e], v, p->modes.cycle);
+        esq_env_tick(&v->env[e], &p->env[e], v, p->modes.cycle, (p->x.env_loop >> e) & 1);
     if (v->gnote != v->gtarget) {                         /* glide: linear, a constant time for any interval */
         int g = v->gnote < v->gtarget ? v->gnote + v->grate : v->gnote - v->grate;
         v->gnote = (v->gnote < v->gtarget) == (g < v->gtarget) && g != v->gtarget ? g : v->gtarget;
@@ -464,8 +522,24 @@ static void esq_voice_tick(esq_synth_t *s, esq_voice_t *v)
     src[ESQ_SRC_XCTRL] = s->xctrl;
     src[ESQ_SRC_OFF] = 0;
     for (e = 0; e < 3; e++) {
-        esq_lfo_tick(&v->lfo[e], &p->lfo[e], src[p->lfo[e].mod_src & 15]);
+        esq_lfo_tick(&v->lfo[e], &p->lfo[e], src[p->lfo[e].mod_src & 15], p->x.lfo_shape[e] < ESQ_NLSH ? p->x.lfo_shape[e] : 0u,
+                     p->x.lfo_sync[e], s->tempo, (p->x.lfo_oneshot >> e) & 1u, e == 0 ? v->xlfo1 : 0, &s->xr);
         src[ESQ_SRC_LFO1 + e] = v->lfo[e].out;
+    }
+    {   /* (R5) the two extra modulations, by destination; DRIFT: the card's own tuning and cutoff, a slow wander */
+        const esq_ext_t *x = &p->x;
+        int k;
+        for (k = 0; k < ESQ_NXD; k++)
+            xm[k] = 0;
+        for (k = 0; k < 2; k++)
+            if (x->xm_dst[k] && x->xm_dst[k] < ESQ_NXD)
+                xm[x->xm_dst[k]] += esq_xsrc(s, v, src, x->xm_src[k]) * esq_clampi(x->xm_amt[k], -63, 63);
+        v->xlfo1 = (int8_t)(esq_asr8(xm[ESQ_XD_LFO1]) / 2);   /* (+-15 rate steps; next update's) */
+        if (x->drift) {
+            v->wander = (int8_t)esq_clampi(v->wander + (esq_rand8(&s->xr) >> 4), -127, 127);
+            pdrift = ((v->card_p * x->drift) >> 8) + ((v->wander * x->drift) >> 9);   /* +-12 cents, +-6 */
+        }
+        v->fc_drift = (int16_t)((v->card_f * x->drift) >> 5);   /* +- a semitone at 63 */
     }
 
     /* the DOC: frequency and volume registers */
@@ -475,8 +549,12 @@ static void esq_voice_tick(esq_synth_t *s, esq_voice_t *v)
         const esq_zone_t *z;
         /* 1/256 semitone: the modulators are source x (2 x amount) / 2 */
         int pitch = v->gnote + op->semi * 256 + (op->fine & 31) * 8 + esq_mod(&op->fm[0], src, 1) +
-                    esq_mod(&op->fm[1], src, 1) + s->master_tune * 4 + s->bend;
-        z = esq_wave_zone(s->bank, op->wave, note + op->semi);
+                    esq_mod(&op->fm[1], src, 1) + s->master_tune * 4 + s->bend +
+                    v->detune + pdrift + xm[ESQ_XD_PITCH] + ((s->micro[v->note % 12] * 656) >> 8);   /* (R5) */
+        int sc = (esq_xsrc(s, v, src, p->x.scan_src[o]) * esq_clampi(p->x.scan_amt[o], -63, 63) + xm[ESQ_XD_SCAN]) * 2;
+        int wv = op->wave + (sc >= 0 ? sc >> 10 : -((-sc) >> 10));   /* (R5) wave scanning: +-15 waves */
+        wv = esq_clampi(wv, 0, s->bank->nwaves ? (int)s->bank->nwaves - 1 : 0);
+        z = esq_wave_zone(s->bank, (uint32_t)wv, note + op->semi);
         if (z->flags & ESQ_ZONE_ONESHOT)
             v->oneshot |= (uint8_t)(1u << o);
         else
@@ -494,7 +572,7 @@ static void esq_voice_tick(esq_synth_t *s, esq_voice_t *v)
             v->inc[o] = esq_doc_inc(s, pitch, z);
 #endif
         }
-        d = (esq_mod(&dp->am[0], src, 2) + esq_mod(&dp->am[1], src, 2)) * 2;
+        d = (esq_mod(&dp->am[0], src, 2) + esq_mod(&dp->am[1], src, 2)) * 2 + xm[ESQ_XD_LEVEL] * 4;
         idx = d > 32767 ? 127 : d < -32768 ? 0 : esq_clampi(dp->level * 2 + esq_asr8(d), 0, 127);
         v->vol[o] = (v->vol[o] + (dp->on ? esq_docvol[idx] : 0u)) >> 1;   /* averaged with the last value */
     }
@@ -505,15 +583,18 @@ static void esq_voice_tick(esq_synth_t *s, esq_voice_t *v)
     v->vca_slope = (esq_vcacurve[idx > 127 ? 127 : idx] * 256 - (v->vca_acc & ~255)) / 4;
 
     /* filter: FREQ + two modulators + keyboard, x2 + the autotune offset */
-    d = esq_mod(&p->flt.mod[0], src, 2) + esq_mod(&p->flt.mod[1], src, 2) + esq_clampi(p->flt.keybd, 0, 63) * 4 * note;
+    d = esq_mod(&p->flt.mod[0], src, 2) + esq_mod(&p->flt.mod[1], src, 2) + esq_clampi(p->flt.keybd, 0, 63) * 4 * note +
+        xm[ESQ_XD_CUTOFF] * 2;
     f = esq_fc_dac(p->flt.freq & 127, d) + (((s->cut_offset + v->fc_drift) * 461) >> 16);   /* 0.555 semitone a DAC step */
     v->fc_slope = (esq_clampi(f, 0, 255) * 256 - (v->fc_acc & ~255)) / 4;
 
     /* pan: averaged with the last; Q: direct */
-    f = esq_clampi((p->dca4.pan & 15) * 16 + 2 * esq_asr8(esq_mod(&p->dca4.panmod, src, 2)) + v->pan_bias, 0, 255);
+    f = esq_clampi((p->dca4.pan & 15) * 16 + 2 * esq_asr8(esq_mod(&p->dca4.panmod, src, 2) + xm[ESQ_XD_PAN] * 2) +
+                   v->pan_bias, 0, 255);
     v->pan_dac = (uint8_t)((f + v->pan_new) >> 1);
     v->pan_new = (uint8_t)f;
-    v->q_dac = (uint8_t)((p->flt.q & 31) * 4);
+    v->q_dac = (uint8_t)esq_clampi((p->flt.q & 31) * 4 +   /* (R5) Q modulation */
+                                   esq_asr8((esq_xsrc(s, v, src, p->x.q_src) * esq_clampi(p->x.q_amt, -63, 63) + xm[ESQ_XD_Q]) * 2), 0, 127);
 }
 
 /* ------------------------------------------------------------- the 2.5 ms CV step --- */
@@ -1009,6 +1090,12 @@ ESQ_COLD static void esq_voice_start(esq_synth_t *s, esq_voice_t *v, int note, i
         esq_env_start(&v->env[e], &p->env[e], v, !(was && !p->modes.env_reset));   /* (ENV reset off: any retrigger
                                                           * of a sounding voice goes on from its level, as the OS does;
                                                           * up to v6.5.3 a new key restarted from 0: a click) */
+    {   /* (R5) this note's RAND, ALT, RR4 */
+        uint32_t k = s->xcount++;
+        v->xrnd = esq_rand8(&s->xr);
+        v->xalt = (uint8_t)(k & 1u ? 127 : 0);
+        v->xrr = (uint8_t)((k & 3u) * 127u / 3u);
+    }
     v->cv_step = 0;                                       /* update now, then every 10 ms */
     v->halted = 0;                                        /* (one-shots play again) */
     esq_voice_tick(s, v);
@@ -1067,8 +1154,41 @@ static esq_voice_t *esq_voice_pick(esq_synth_t *s, int note)
     return best;
 }
 
+/* (R5) unison: voices a note (1..4), and voice k of n's detune (1/256 semitone) and pan spread */
+static uint32_t esq_uni(const esq_synth_t *s)
+{
+    uint32_t n = s->patch.x.uni;
+    return n < 2u ? 1u : n > 4u ? 4u : n;
+}
+static void esq_uni_set(const esq_synth_t *s, esq_voice_t *v, uint32_t k, uint32_t n)
+{
+    int sp = 2 * (int)k - (int)(n - 1u), den = n > 1u ? (int)(n - 1u) : 1;
+    v->detune = (int16_t)(sp * (int)s->patch.x.uni_det * 256 / (100 * den));
+    v->pan_bias = (int16_t)(n > 1u ? sp * 32 / den : 0);
+}
+/* (R5) a voice for unison voice k: a free one, else the oldest released, else the oldest, none already taken */
+static esq_voice_t *esq_voice_pick_uni(esq_synth_t *s, esq_voice_t *const *used, uint32_t nused)
+{
+    esq_voice_t *best = 0;
+    int i, pass;
+    for (pass = 0; pass < 3 && !best; pass++)
+        for (i = 0; i < ESQ_NVOICE; i++) {
+            esq_voice_t *v = &s->v[i];
+            uint32_t u, taken = 0;
+            for (u = 0; u < nused; u++) taken |= used[u] == v;
+            if (taken || (pass == 0 && v->active) || (pass == 1 && v->gate))
+                continue;
+            if (!best || v->age < best->age)
+                best = v;
+            if (pass == 0)
+                break;
+        }
+    return best;
+}
+
 void esq_note_on(esq_synth_t *s, int note, int vel)
 {
+    uint32_t n = esq_uni(s), k;
     if (note < 0 || note > 127)
         return;
     if (vel <= 0) {
@@ -1082,29 +1202,50 @@ void esq_note_on(esq_synth_t *s, int note, int vel)
         int legato = v->active && v->gate && s->nheld > 0;
         if (s->nheld < ESQ_HELD_MAX)
             s->held[s->nheld++] = (uint8_t)note;
-        esq_voice_start(s, v, note, vel, legato);
+        for (k = 0; k < n; k++) {                         /* (unison: voices 0 .. n - 1 together) */
+            esq_uni_set(s, &s->v[k], k, n);
+            esq_voice_start(s, &s->v[k], note, vel, legato && s->v[k].active && s->v[k].gate);
+        }
         return;
     }
-    esq_voice_start(s, esq_voice_pick(s, note), note, vel, 0);
+    if (n == 1u) {
+        esq_voice_t *v = esq_voice_pick(s, note);
+        v->detune = 0;
+        v->pan_bias = 0;
+        esq_voice_start(s, v, note, vel, 0);
+        return;
+    }
+    {
+        esq_voice_t *used[4];
+        for (k = 0; k < n; k++) {
+            used[k] = esq_voice_pick_uni(s, used, k);
+            if (!used[k])
+                break;
+            esq_uni_set(s, used[k], k, n);
+            esq_voice_start(s, used[k], note, vel, 0);
+        }
+    }
 }
 
 void esq_note_off(esq_synth_t *s, int note)
 {
     int i;
     if (s->patch.modes.mono) {
-        esq_voice_t *v = &s->v[0];
-        int k, w = 0;
+        int k, w = 0, u, n = (int)esq_uni(s);
         for (k = 0; k < s->nheld; k++)
             if (s->held[k] != note)
                 s->held[w++] = s->held[k];
         s->nheld = (uint8_t)w;
-        if (v->active && v->gate && v->note == note) {
-            if (s->nheld)
-                esq_voice_start(s, v, s->held[s->nheld - 1], v->vel, 1);
-            else if (s->sustain)
-                v->sustained = 1;
-            else
-                esq_voice_release(s, v);
+        for (u = 0; u < n; u++) {                         /* (unison: voices 0 .. n - 1) */
+            esq_voice_t *v = &s->v[u];
+            if (v->active && v->gate && v->note == note) {
+                if (s->nheld)
+                    esq_voice_start(s, v, s->held[s->nheld - 1], v->vel, 1);
+                else if (s->sustain)
+                    v->sustained = 1;
+                else
+                    esq_voice_release(s, v);
+            }
         }
         return;
     }
@@ -1130,6 +1271,20 @@ void esq_all_off(esq_synth_t *s)
 
 /* ------------------------------------------------------------- setup, controls --- */
 
+/* (R5) each voice card's own tuning and cutoff offsets (DRIFT scales them), the tempo LFO SYNC starts at */
+ESQ_COLD static void esq_cards(esq_synth_t *s)
+{
+#if ESQ_WHOLE || !ESQ_FIXED
+    uint32_t r = 0x51D1u;
+    int i;
+    for (i = 0; i < ESQ_NVOICE; i++) {
+        s->v[i].card_p = esq_rand8(&r);
+        s->v[i].card_f = esq_rand8(&r);
+    }
+#endif
+    s->tempo = 120;
+}
+
 #if ESQ_FIXED
 ESQ_COLD void esq_init(esq_synth_t *s, uint32_t sample_rate, const esq_wavebank_t *bank)
 {
@@ -1150,6 +1305,7 @@ ESQ_COLD void esq_init(esq_synth_t *s, uint32_t sample_rate, const esq_wavebank_
     s->volume = 127;
     s->last_note = -1;
     s->doc_period = ESQ_Q_DOC_PERIOD;
+    esq_cards(s);
 }
 #else
 static float esq_onepole_g(float hz, float fs)
@@ -1204,6 +1360,7 @@ ESQ_COLD void esq_init(esq_synth_t *s, uint32_t sample_rate, const esq_wavebank_
         s->pan_gr[i] = x;
     }
     esq_set_doc_rate(s, ESQ_DOC_RATE_DEFAULT);
+    esq_cards(s);
 }
 #endif
 

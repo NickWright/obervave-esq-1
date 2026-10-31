@@ -90,6 +90,9 @@ typedef struct {
     int8_t out;                  /* the modulation value: wave x depth / 256 */
     int16_t rate;                /* FREQ, plus HUMAN's drift */
     int16_t level;               /* depth x 2 */
+    uint16_t ph16;               /* (R5) SYNC's phase, 1/256 of a step */
+    int8_t r0, r1;               /* (R5) S&H / SMOOTH / DRUNK: this cycle's value, the next one's */
+    uint8_t done;                /* (R5) one-shot: played its cycle */
 } esq_lfost_t;
 
 typedef struct {
@@ -115,6 +118,10 @@ typedef struct {
     uint8_t oneshot, halted;     /* bit o: oscillator o plays a one-shot zone / has played it to its end (silent) */
     int16_t fc_drift;            /* 1/256 semitone on this voice's cutoff (a host's voice-card drift), with cut_offset */
     int16_t pan_bias;            /* added to the pan DAC (0..255): a host's spread of its voices across the field */
+    int16_t detune;              /* (R5) 1/256 semitone: unison */
+    int8_t xrnd, card_p, card_f, wander;   /* (R5) RAND this note; the voice card's own pitch / cutoff; DRIFT's walk */
+    uint8_t xalt, xrr;           /* (R5) ALT, RR4 this note */
+    int8_t xlfo1;                /* (R5) an extra modulation of LFO1's rate (the last update's) */
     uint32_t doc_nb;             /* per-voice API: samples to the voice's next DOC frame (Q24) */
 #if ESQ_FIXED
     int32_t cv_wait;             /* samples to the next CV step (Q8) */
@@ -152,6 +159,9 @@ typedef struct {
     int bend;                    /* 1/256 semitone (esq_bend: +-bend_range) */
     int bend_range;              /* semitones */
     int master_tune;             /* -31..31, 1/64 semitone */
+    int8_t micro[12];            /* (R5) cents on each note of the octave (C ..): microtuning */
+    uint8_t tempo;               /* (R5) BPM, for LFO SYNC */
+    uint32_t xcount, xr;         /* (R5) notes started: ALT, RR4; R5's random generator */
     int last_note;               /* poly glide starts from it (-1: none yet) */
     uint8_t held[ESQ_HELD_MAX], nheld;
     int cut_offset;              /* 1/256 semitone added to every voice's cutoff (a host's filter modulation) */

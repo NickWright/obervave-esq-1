@@ -20,9 +20,9 @@ run() {                                         # (on GitHub a failure is an ann
 
 # the ESQ-1 engine's own tests (pitch, DOC, envelopes, LFOs, CVs, voices, SYNC, AM, filter, programs, glide): the float
 # model and the integer build the firmware runs, the integer one checked against the float one
-for q in 0 1; do
-    cc -O2 -std=c99 -Wall -Wno-unused-function -D_DEFAULT_SOURCE -DESQ_FIXED=$q -o "$OUT/esq_engine_test$q" tests/esq_engine_test.c -lm \
-        && run "ESQ-1 engine (ESQ_FIXED=$q)" sh -c "cd tests && ../$OUT/esq_engine_test$q"
+for q in 0 1; do                                # (a build that fails is a failure too)
+    run "ESQ-1 engine (ESQ_FIXED=$q)" sh -c "cc -O2 -std=c99 -Wall -Wno-unused-function -D_DEFAULT_SOURCE -DESQ_FIXED=$q \
+        -o $OUT/esq_engine_test$q tests/esq_engine_test.c -lm && cd tests && ../$OUT/esq_engine_test$q"
 done
 
 run "the app on the host: the default script plays, screens and sound" sh tests/run_host.sh

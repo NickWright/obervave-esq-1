@@ -218,6 +218,7 @@ static void test_env(void)
 static void test_lfo(void)
 {
     esq_lfost_t l;
+    uint32_t xr = 1;
     esq_lfo_t p = {.freq = 7, .wave = ESQ_LFO_SQR, .l1 = 63, .l2 = 63};
     int i, neg = 0, wraps = 0, prev;
     CHECK(fabsf(esq_lfo_hz(63) - 57.0f / 2.56f) < 0.01f && fabsf(esq_lfo_hz(7) - 1.0f / 2.56f) < 0.001f,
@@ -226,7 +227,7 @@ static void test_lfo(void)
     esq_lfo_start(&l, &p);
     prev = l.phase;
     for (i = 0; i < 512; i++) {
-        esq_lfo_tick(&l, &p, 0);
+        esq_lfo_tick(&l, &p, 0, 0, 0, 0, 0, 0, &xr);
         neg |= l.out < 0;
         wraps += l.phase < prev;
         prev = l.phase;
@@ -237,20 +238,20 @@ static void test_lfo(void)
     memset(&l, 0, sizeof l);
     esq_lfo_start(&l, &p);
     for (i = 0; i < 7 * 256; i++)
-        esq_lfo_tick(&l, &p, 0);
+        esq_lfo_tick(&l, &p, 0, 0, 0, 0, 0, 0, &xr);
     CHECK(l.phase == 0, "FREQ 3: phase %d after 7 x 256 ticks (3/7 a tick)", l.phase);
     p = (esq_lfo_t){.freq = 20, .wave = ESQ_LFO_TRI, .l1 = 0, .l2 = 40, .delay = 4};
     memset(&l, 0, sizeof l);
     esq_lfo_start(&l, &p);
     for (i = 0; i < 10; i++)
-        esq_lfo_tick(&l, &p, 0);
+        esq_lfo_tick(&l, &p, 0, 0, 0, 0, 0, 0, &xr);
     CHECK(l.level == 40, "DELAY 4: depth %d after 10 ticks, want 40", l.level);
     p.delay = 0;
     esq_lfo_start(&l, &p);
     for (i = 0; i < 100; i++)
-        esq_lfo_tick(&l, &p, 0);
+        esq_lfo_tick(&l, &p, 0, 0, 0, 0, 0, 0, &xr);
     CHECK(l.level == 0 && l.out == 0, "DELAY 0 left L1");
-    esq_lfo_tick(&l, &p, 100);
+    esq_lfo_tick(&l, &p, 100, 0, 0, 0, 0, 0, &xr);
     CHECK(l.out != 0 || l.phase == 64 || l.phase == 192, "the MOD source did not add to the depth");
 }
 
