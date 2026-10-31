@@ -39,7 +39,7 @@ static volatile uint32_t sq_bank_changed;      /* (set by sq_set_bank) the main 
  * samples) and (R4) the timed one: the sequencer's and the arpeggiator's notes, each with the sample time it is due
  * at (sq_clock's count), put in time order by sq_play.h's scheduler a few ms ahead and taken within 32 samples of it */
 enum { EV_ON, EV_OFF, EV_CC, EV_BEND, EV_PRESS, EV_PROG, EV_PANIC, EV_SET };
-enum { SET_TUNE, SET_BENDR };                   /* EV_SET's a: an engine setting (MASTER), v its value */
+enum { SET_TUNE, SET_BENDR, SET_OUT };                   /* EV_SET's a: an engine setting (MASTER), v its value */
 typedef struct { uint8_t type, a, b, pad; int16_t v; } sq_ev_t;
 #define SQ_NQ 128u
 #define SQ_NTQ 256u
@@ -97,6 +97,7 @@ static void sq_do(const sq_ev_t *e)
     case EV_SET:
         if (e->a == SET_TUNE) sq.master_tune = e->v;
         else if (e->a == SET_BENDR) sq.bend_range = e->v;
+        else if (e->a == SET_OUT) sq.out_clean = (uint8_t)e->v;
         break;
     default: esq_all_off(&sq); break;
     }
@@ -138,8 +139,9 @@ static void sq_render(int32_t *out, uint32_t n)
     }
     sq_clock += n;
     for (i = 0; i < n; i++) {                   /* the output stage's full scale (1 << 24) to the platform's Q15 */
-        out[2u * i] += sq_l[i] >> 9;
-        out[2u * i + 1u] += sq_r[i] >> 9;
+        int32_t l = sq_l[i] >> 9, r = sq_r[i] >> 9;   /* (OUTPUT CLEAN can pass full scale: clipped here) */
+        out[2u * i] += l > 65535 ? 65535 : l < -65535 ? -65535 : l;
+        out[2u * i + 1u] += r > 65535 ? 65535 : r < -65535 ? -65535 : r;
     }
     for (i = 0; i < ESQ_NVOICE; i++) {
         int32_t lv = sq.v[i].active ? sq.v[i].env[3].level >> 8 : 0;

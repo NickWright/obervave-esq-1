@@ -163,6 +163,8 @@ typedef struct {
 #if ESQ_FIXED
     int32_t o_s1[2], o_s2[2];    /* output stage (Q24) */
     int64_t o_h[2];              /* .. its high-pass (Q32) */
+    uint8_t out_clean;           /* (SQ1D) 1: the output stage's filters without its saturation (x 2, linear: the host
+                                  * clips), as a per-voice host hears the voices */
 #else
     float fs, doc_rate, out_gain;
     uint32_t inc_k;              /* 2 x 8.1758 Hz x 65536 / DOC rate, Q20 (esq_doc_inc) */

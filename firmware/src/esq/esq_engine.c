@@ -804,7 +804,7 @@ void esq_render_q(esq_synth_t *s, int32_t *out_l, int32_t *out_r, uint32_t n)
                 s->o_h[ch] += ((int64_t)(x - (int32_t)(s->o_h[ch] >> 8)) * ESQ_Q_OHP) >> 23;
                 x -= (int32_t)(s->o_h[ch] >> 8);
                 w = esq_m30(x - s->o_s2[ch], ESQ_Q_OG2); x = w + s->o_s2[ch]; s->o_s2[ch] = x + w;
-                c[ch] = esq_tanh_q(x * 2);                /* x out_gain 2 */
+                c[ch] = s->out_clean ? x * 2 : esq_tanh_q(x * 2);   /* x out_gain 2 */
             }
             ol[j] = c[0];
             or_[j] = c[1];
