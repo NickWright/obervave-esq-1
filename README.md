@@ -7,10 +7,10 @@ The voice is a model of the original's voice hardware running its OS 3.5 control
 factory programs come from **your own ROM dumps**, sent to the FM-1's flash once; the firmware holds no ROM data and
 plays generated stand-in waves without them.
 
-> **Status: R4 (development).** Programs in INT, CART A, CART B (yours, in flash) and ROM (your bank's 40), shown as
-> banks of ten; every voice page of the original, edited as on it; COMPARE, UNDO, INIT, COPY; WRITE; SysEx dumps in
-> and out; an arpeggiator, latch, chord memory and an 8-pattern step sequencer; system pages. Next: the MODERN look
-> and the enhancements (R5).
+> **Status: R5 (development).** Programs in INT, CART A, CART B and ROM; every voice page of the original, edited as
+> on it, plus extension fields (LFO shapes and tempo sync, looping envelopes, Q modulation, wave scanning, unison,
+> drift, MOD+, tuning); SPLIT / LAYER; COMPARE as the original; an arpeggiator, latch, chord memory and an 8-pattern
+> step sequencer; system pages; VFD or MODERN look; NRPN for every program field.
 
 ## Install
 
@@ -49,11 +49,12 @@ python3 tools/esq_syx.py dump --edit -o prog.syx    # the program playing
 | EDIT | OSC 1 > 2 > 3 |
 | FX | DCA 1 > 2 > 3 > FILTER > DCA 4 |
 | ENV / LFO | ENV 1 > 4 / LFO 1 > 3 |
-| GLO | MODES > SPLIT/LAYER; held: MASTER, then GLO: MIDI > STORAGE > MASTER |
+| GLO | MODES > SPLIT/LAYER > MOD+; held: MASTER, then GLO: MIDI > STORAGE > TUNING > MASTER |
 | ARP | The ARP page; there: arpeggiator on / off. Held: LATCH on / off. Held + a chord: chord memory (+ one key: off) |
 | SEQ, PLAY, REC | The sequencer page; play / stop; record (stopped: step entry, SEL a rest; playing: real time, overdub) |
 | EDIT held + a key | Any page: OSC 1-3, DCA 1-3, FILTER, DCA 4, ENV 1-4, LFO 1-3, MODES, SPLIT/LAYER, PERFORM, ARP, SEQ, MASTER, MIDI, STORAGE |
-| SELECT / ALGORITHM / KNOB 1-4 | The cursor / the cursor's field / the fields of the cursor's row |
+| SELECT / KNOB 1-4 / ALGORITHM | The screens (at most four fields each) / the field over each knob / the field last turned |
+| EDIT held + ENV / LFO | MUTATE / RANDOM (undoable) |
 | SEL (press) | COMPARE: the program as stored, against your edits |
 | EDIT held + SEL / HOME / SAVE | UNDO (again: REDO) / INIT / COPY into the next OSC, DCA, ENV, LFO (on SEQ: clear / copy the pattern) |
 | SAVE | WRITE: PRESETS / ALGORITHM pick the slot, OCT+ yes, OCT- no. On SEQ: store the pattern; on STORAGE: send the dump |

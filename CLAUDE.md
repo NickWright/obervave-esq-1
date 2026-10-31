@@ -34,7 +34,8 @@ NickWright/obervave-esq-1 (the name is historical). Branch `esq1` keeps the earl
 | R2 (done) | Program memory: ROM 40 (read only), INT 40, CART A, CART B (40 each, flash); WRITE; ESQ-1 SysEx single / bank dumps in and out, requests |
 | R3 (done) | The page editor (below), VFD look, cursor + data entry, COMPARE, undo, INIT, copy OSC / ENV / LFO |
 | R4 (built) | CPU (the engine at -O2, its sample loop in RAM); the button layout below; PERFORM; system pages MASTER, MIDI, STORAGE; IMPORT asks; arpeggiator, latch, chord memory; a sequencer (8 patterns) |
-| R5 | MODERN look (the same fields + envelope / LFO / wave graphics); enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), CC / NRPN for every parameter, MUTATE / RANDOM |
+| R4.1 (built) | COMPARE as the original (C*, the edit buffer kept); screens of four fields; knob acceleration; CPU meter split, waves in RAM, USB AUDIO OFF; OUT ORIG / CLEAN; SysEx dumps survive other senders |
+| R5 (built) | MODERN look (graphs); the extension block: LFO shapes, sync, one-shot, looping envelopes, Q mod, wave scan, unison, DRIFT, MOD+ (sources RAND / ALT / RR4 / ZONE to pitch, cutoff, Q, level, pan, LFO1 rate, scan), TUNING, SPLIT / LAYER played, NRPN / CC, MUTATE / RANDOM |
 | R6 | CPU on the device, factory programs, 1.0 |
 
 Not planned before 1.0: the ESQ-1's sequencer, effects.
@@ -47,9 +48,11 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
   LATCH on / off, ARP held + keys = chord memory (one key: off); PLAY = sequencer play / stop; REC = record (step entry
   when stopped, real time when playing). EDIT held + a key = any page: the ESQ-1's page-button order (OSC 1-3, DCA 1-3,
   FILTER, DCA 4, ENV 1-4, LFO 1-3, MODES, SPLIT/LAYER), then PERFORM, ARP, SEQ, MASTER, MIDI, STORAGE.
-- SELECT turns the cursor over the page's fields (the ESQ-1's soft buttons); KNOB 1-4 edit the four fields of the
-  cursor's row; ALGORITHM is the data slider on the cursor's field; SEL pressed = COMPARE (step entry: a rest; with
-  keys down: the chord one step longer).
+- (R4.1) Pages are screens of at most four fields, one over each knob (`SCR[]` in sq_edit.h); SELECT steps the
+  screens (on the program's pages on through OSC 1 .. MOD+); KNOB 1-4 edit the screen's fields; ALGORITHM the last
+  turned (lit). Fast turns step 2 / 4 / 8 (fields of 32 values or more). SEL pressed = COMPARE (step entry: a rest;
+  with keys down: the chord one step longer). GLO taps MODES > SPLIT/LAYER > MOD+ (system: MASTER > MIDI > STORAGE >
+  TUNING). EDIT held + ENV / LFO = MUTATE / RANDOM.
 - HOME = the program select page (a bank of ten); PRESETS = program from any page; SAVE = WRITE (SAVE, PRESETS picks
   the slot, OCT+ yes, OCT- no); on SEQ SAVE stores the pattern, on STORAGE it sends the dump OUT names. EDIT held +
   SEL / HOME / SAVE = UNDO / INIT / COPY (on SEQ: -, CLEAR the pattern, COPY it into the next). OCT- / OCT+ octave.
@@ -131,6 +134,30 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
 - IMPORT (`sq_prog.h`): an all-40 dump goes where IMPORT says or (ASK) waits on a prompt (PRESETS / ALGORITHM the set,
   OCT+ / OCT-); editor command 102 [set] sends the next one straight there (`esq_syx.py send --to carta`).
 - Host: `tests/sq1d_r4.txt`, `sq1d_r4b.txt`, `sq1d_r4clk.txt` (MIDI clock); the 102 check in run_tests.sh.
+
+## R4.1 and R5 (2026-10-31)
+
+- COMPARE (sq_edit.h `ed_compare`, `ed_keep_*`): C* on every page once edited; the edit buffer kept over a program
+  change (`ed_keep_aside` from `prog_load`) and recalled by COMPARE on a program not edited; WRITE / a new edit drop it.
+- CPU: the wave bank is copied into the pool (`sq_wram`, sq_engine.h `sq_bank_ram`) and played from RAM; the meter
+  (`app_audio`) shows the render and, apart, TIMER5's time inside it (platform.c `t5_nested`), the most of each over
+  64 renders. MASTER USB OFF (`uac_off`: no ring, resampler or packets). MASTER OUT CLEAN (`esq_synth_t.out_clean`).
+- SysEx in (sq_prog.h): another sender's F0..F7 inside a dump is stepped over (Felucca-ESQ v6.5.2); a broken dump
+  shows LENGTH n/8160, BAD BYTE AT n or CUT AT n. The owner's cleanBanks2026.syx imports on the host.
+- The extension block (`esq_ext_t`, esq/esq_types.h, 32 bytes, `esq_patch_t.x`; zero = the original, bit-identical
+  on the host): per program in `sq_ext[set][slot]`, the set's second sector (`bank_save(set + NBANK)`); ROM's zero; a
+  received dump's zero. The edit buffer's is `sq_edit.x` (`edit_decode` after every raw decode). Engine: LFO shapes /
+  SYNC (`esq_synth_t.tempo`) / one-shot (`esq_lfo_tick`), ENV loop, Q mod, wave scan, unison (`esq_note_on`,
+  `esq_voice_pick_uni`), DRIFT (`card_p / card_f / wander`), sources RAND / ALT / RR4 / ZONE (`esq_xsrc`), two MOD+
+  routes, `micro[12]`; R5's randomness has its own generator (`xr`).
+- Fields of the block: `fld_t.x` (FX_XS one byte, FX_XA the slot's in an array, FX_XB the slot's bit); pages OSC
+  (SCAN), FILTER (QMOD), ENV (LOOP), LFO (SHAPE SYNC 1SHOT), MODES (UNI DETUN DRIFT), MOD+ (PG_XMOD), TUNING (PG_TUNE).
+- SPLIT/LAYER (sq_engine.h): `sq`, `sq_lay`, `sq_spl`; `sq_route` with the programs (`edit_apply`: PRG 0..119 =
+  INT, CART A, CART B); `sq_cap` keeps eight voices among them. S/L is not played.
+- NRPN 99 / 98 / 6 (sq1d.c `cc_param`: MSB the page 1..18, LSB the field, value from the field's lowest); CC 74 71
+  73 72 5. MUTATE / RANDOM `ed_shake`. MODERN: `ui_set_look` palette, graphs in `sq_ui_page.h` (ENV, LFO, OSC).
+- Settings 48 bytes ("1D1S"; R4's 44 carried over): + scale, skey, look.
+- Host: `tests/sq1d_r41.txt`, `tests/sq1d_r5.txt`.
 
 ## The wave bank in flash (Phase 2, 2026-10-30)
 
