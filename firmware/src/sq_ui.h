@@ -3,10 +3,24 @@
  * set, the octave), the program playing in large letters, its bank of ten in two columns of five (the ESQ-1's ten
  * soft buttons), the voices at the foot. WRITE takes the program block and the bank for the slot it writes to; a
  * message (a received dump) takes the program block for 2 s. Drawn in strips, each only when what it shows changed. */
-#define VFD RGB(110, 236, 255)                  /* lit */
-#define VFD_DIM RGB(26, 70, 82)                 /* unlit segments, rules */
-#define VFD_BG RGB(2, 10, 14)
-#define VFD_SEL_BG RGB(110, 236, 255)
+/* the colours: VFD (cyan, the original's display) or (R5) MODERN; the names stay the VFD's */
+static uint16_t ui_pal[5] = {RGB(110, 236, 255), RGB(26, 70, 82), RGB(2, 10, 14), RGB(110, 236, 255), RGB(110, 236, 255)};
+#define VFD ui_pal[0]                           /* lit */
+#define VFD_DIM ui_pal[1]                       /* unlit segments, rules */
+#define VFD_BG ui_pal[2]
+#define VFD_SEL_BG ui_pal[3]
+#define UI_ACC ui_pal[4]                        /* (MODERN) the graphs' colour */
+static uint32_t ui_modern;
+static uint32_t ui_mode_shown = 99u;
+static void ui_set_look(uint32_t modern)
+{
+    static const uint16_t P[2][5] = {{RGB(110, 236, 255), RGB(26, 70, 82), RGB(2, 10, 14), RGB(110, 236, 255), RGB(110, 236, 255)},
+                                     {RGB(236, 238, 242), RGB(70, 76, 90), RGB(16, 18, 24), RGB(255, 150, 50), RGB(255, 150, 50)}};
+    uint32_t i;
+    ui_modern = modern != 0;
+    for (i = 0; i < 5u; i++) ui_pal[i] = P[ui_modern][i];
+    ui_mode_shown = 99u;                        /* (everything again) */
+}
 
 static int32_t ui_oct;
 static uint32_t ui_write;                       /* WRITE: 0 off, else 1 + the target program number */
@@ -153,8 +167,6 @@ static void ui_voices(void)
 
 static uint32_t ed_pg_now(void);                /* (sq_edit.h: the page, PG_PROG = 0 the program page) */
 static int ui_page_draw(int full);              /* (sq_ui_page.h) */
-static uint32_t ui_mode_shown = 99u;
-
 static void ui_draw(int full)
 {
     uint32_t i, changed = 0, msg = fm1_ms < ui_msg_until, cur = ui_write ? ui_write - 1u : sq_cur;

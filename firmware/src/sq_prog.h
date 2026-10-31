@@ -20,6 +20,8 @@
 static const char *const SET_NAME[NSET] = {"INT", "CART A", "CART B", "ROM"};
 
 static uint8_t sq_pcb[NBANK][NSLOT][ESQ_PCB_LEN] __attribute__((section(".pool")));
+static esq_ext_t sq_ext[NBANK][NSLOT] __attribute__((section(".pool")));   /* (R5) each program's extension block, in
+                                                 * the set's second sector (bank_save(set + NBANK)); ROM's: zero */
 static uint32_t sq_stored;                      /* bit i: set i is in flash (else it shows its defaults) */
 static uint32_t sq_cur;                         /* the program number playing: set * 40 + slot */
 static esq_patch_t sq_edit;                     /* the edit buffer, decoded */
@@ -36,11 +38,18 @@ static void prog_pcb(uint32_t g, uint8_t *pcb)
     else if (sq_bank.patches && k < sq_bank.npatches) memcpy(pcb, sq_bank.patches + ESQ_PCB_LEN * k, ESQ_PCB_LEN);
     else esq_patch_to_pcb(&ESQ_DEMO_PATCHES[k < SQ_NDEMO ? k : 0u], pcb);   /* (no bank: the demos, then INIT) */
 }
+static void prog_ext(uint32_t g, esq_ext_t *x)
+{
+    uint32_t set = g / NSLOT % NSET;
+    if (set != SET_ROM) *x = sq_ext[set][g % NSLOT];
+    else memset(x, 0, sizeof *x);
+}
 static void prog_get(uint32_t g, esq_patch_t *p)
 {
     uint8_t pcb[ESQ_PCB_LEN];
     prog_pcb(g, pcb);
     esq_patch_from_pcb(p, pcb);
+    prog_ext(g, &p->x);
 }
 static void prog_name(uint32_t g, char *out7)  /* 6 characters + NUL */
 {
@@ -53,21 +62,46 @@ static void prog_name(uint32_t g, char *out7)  /* 6 characters + NUL */
 }
 
 static void ed_track_lost(void);                /* (sq_edit.h) */
+static void edit_decode(const esq_ext_t *x)     /* the edit buffer from its raw bytes, and its extension block */
+{
+    esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+    sq_edit.x = *x;
+}
 static void ed_keep_aside(void);                /* (sq_edit.h) an edited program, before another is loaded */
 static void ed_keep_drop(void);                 /* (sq_edit.h) the edit buffer is written or replaced */
-static void edit_apply(void)                    /* the edit buffer to the engine */
+static void prog_get(uint32_t g, esq_patch_t *p);
+static uint32_t sl_prog(uint32_t n) { return (n % 120u) / NSLOT * NSLOT + n % NSLOT; }   /* (SPLIT/LAYER's PRG 0..119:
+                                                 * INT, CART A, CART B) */
+static void edit_apply(void)                    /* the edit buffer to the engine, with its LAYER and SPLIT programs */
 {
-    uint32_t f = SQ_CLI();
+    const esq_split_t *sp = &sq_edit.split;
+    esq_patch_t lay, spl;
+    sq_route_t r;
+    uint32_t f;
+    r.layer = sp->layer != 0;
+    r.split = sp->split != 0;
+    r.key = sp->split_point;
+    r.upper = sp->split_dir != 0;
+    if (r.layer) prog_get(sl_prog(sp->layer_prog), &lay); else lay = sq_edit;
+    if (r.split) prog_get(sl_prog(sp->split_prog), &spl); else spl = sq_edit;
+    lay.split.layer = lay.split.split = 0;      /* (one level: theirs do not nest) */
+    spl.split.layer = spl.split.split = 0;
+    f = SQ_CLI();
     sq_pend = sq_edit;
+    sq_pend_lay = lay;
+    sq_pend_spl = spl;
+    sq_route_pend = r;
     SQ_STI(f);
     sq_event(EV_PROG, 0, 0, 0);
 }
 static void prog_load(uint32_t g)
 {
     ed_keep_aside();
+    esq_ext_t x;
     sq_cur = g % NPROG_ALL;
     prog_pcb(sq_cur, sq_edit_pcb);
-    esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+    prog_ext(sq_cur, &x);
+    edit_decode(&x);
     ed_track_lost();
     sq_edited = 0;
     edit_apply();
@@ -80,10 +114,12 @@ static void set_defaults(uint32_t set)
     for (k = 0; k < NSLOT; k++)
         if (set == 0u) prog_pcb(SET_ROM * NSLOT + k, sq_pcb[set][k]);
         else esq_patch_to_pcb(&ESQ_DEMO_PATCHES[0], sq_pcb[set][k]);
+    memset(sq_ext[set], 0, sizeof sq_ext[set]);
 }
 static int set_store(uint32_t set)            /* 0: in flash (the erase stalls the audio ~50 ms) */
 {
     int rc = bank_save(set, sq_pcb[set], NSLOT * ESQ_PCB_LEN);
+    if (!rc) rc = bank_save(set + NBANK, sq_ext[set], sizeof sq_ext[set]);   /* (R5) the extension blocks */
     if (!rc) sq_stored |= 1u << set;
     return rc;
 }
@@ -92,8 +128,12 @@ static void banks_boot(void)
 {
     uint32_t set;
     for (set = 0; set < NBANK; set++)
-        if (!bank_load(set, sq_pcb[set], NSLOT * ESQ_PCB_LEN)) sq_stored |= 1u << set;
-        else set_defaults(set);
+        if (!bank_load(set, sq_pcb[set], NSLOT * ESQ_PCB_LEN)) {
+            sq_stored |= 1u << set;
+            if (bank_load(set + NBANK, sq_ext[set], sizeof sq_ext[set]))   /* (a set from before R5: none) */
+                memset(sq_ext[set], 0, sizeof sq_ext[set]);
+        } else
+            set_defaults(set);
 }
 /* the wave bank changed (installed, or gone): the sets never stored follow it, and the program playing is loaded
  * again (a ROM one is another program now) */
@@ -111,6 +151,7 @@ static int prog_write(uint32_t g)
     uint32_t set = g / NSLOT % NSET, k = g % NSLOT;
     if (set == SET_ROM) return -1;
     memcpy(sq_pcb[set][k], sq_edit_pcb, ESQ_PCB_LEN);
+    sq_ext[set][k] = sq_edit.x;
     if (set_store(set)) return -2;
     sq_cur = g;
     sq_edited = 0;
@@ -192,6 +233,7 @@ static void sx_import_to(uint32_t set)
     static const char *const INTO[3] = {"INTO INT", "INTO CART A", "INTO CART B"};
     set %= NBANK;
     memcpy(sq_pcb[set], rx.pcb, sizeof rx.pcb);
+    memset(sq_ext[set], 0, sizeof sq_ext[set]);     /* (a dump has no extension blocks) */
     ui_say("40 PROGRAMS", set_store(set) ? "NOT STORED" : INTO[set]);
     if (sq_cur / NSLOT == set) prog_load(sq_cur);
     sx_import = 0;
@@ -213,8 +255,10 @@ static void sq_sx_poll(void)
     if (!r) return;
     RING_PUBLISH();
     if (r == 1u) {                              /* one program: the edit buffer, EDITED */
+        esq_ext_t z;
+        memset(&z, 0, sizeof z);
         memcpy(sq_edit_pcb, rx.pcb[0], ESQ_PCB_LEN);
-        esq_patch_from_pcb(&sq_edit, sq_edit_pcb);
+        edit_decode(&z);
         ed_track_lost();
         sq_edited = 1;
         ed_keep_drop();

@@ -196,16 +196,16 @@ static int slot_save(uint32_t i, const void *a, uint32_t na, const void *b, uint
                                                  * the programs with the settings) */
 /* (SQ1D) the program banks INT, CART A, CART B (platform.c bank_load / bank_save), in RAM */
 #define NBANK 3u
-static uint8_t host_bank[NBANK][4 + 4096];
+static uint8_t host_bank[2u * NBANK][4 + 4096];  /* (NBANK + i: set i's extension blocks) */
 static int bank_load(uint32_t i, void *p, uint32_t n)
 {
-    if (i >= NBANK || host_bank[i][0] != 1 || n > 4096u) return -1;
+    if (i >= 2u * NBANK || host_bank[i][0] != 1 || n > 4096u) return -1;
     memcpy(p, host_bank[i] + 4, n);
     return 0;
 }
 static int bank_save(uint32_t i, const void *p, uint32_t n)
 {
-    if (i >= NBANK || n > 4096u) return -1;
+    if (i >= 2u * NBANK || n > 4096u) return -1;
     host_bank[i][0] = 1;
     memcpy(host_bank[i] + 4, p, n);
     printf("%6u ms  bank %u saved (%u B)\n", fm1_ms, i, n);

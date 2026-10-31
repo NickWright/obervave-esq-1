@@ -288,8 +288,10 @@ static void wv_inval(void)                      /* the range written, read throu
 static int bank_load(uint32_t i, void *p, uint32_t n) { (void)i; (void)p; (void)n; return -1; }
 static int bank_save(uint32_t i, const void *p, uint32_t n) { (void)i; (void)p; (void)n; return -1; }
 #else
-static int bank_load(uint32_t i, void *p, uint32_t n) { return i < NBANK ? sector_load(BANKS_AT + i * BANK_SECT * 0x1000u, p, n) : -1; }
-static int bank_save(uint32_t i, const void *p, uint32_t n) { return i < NBANK ? sector_save(BANKS_AT + i * BANK_SECT * 0x1000u, p, n) : -1; }
+/* bank i < NBANK: a set's programs, its first sector; NBANK + i: (R5) its extension blocks, the second */
+#define BANK_AT(i) (BANKS_AT + (i) % NBANK * BANK_SECT * 0x1000u + (i) / NBANK * 0x1000u)
+static int bank_load(uint32_t i, void *p, uint32_t n) { return i < 2u * NBANK ? sector_load(BANK_AT(i), p, n) : -1; }
+static int bank_save(uint32_t i, const void *p, uint32_t n) { return i < 2u * NBANK ? sector_save(BANK_AT(i), p, n) : -1; }
 #endif
 
 /* blob i (0..NBLOB-1): one more sector each, the same format (OberVave: a sequencer pattern) */

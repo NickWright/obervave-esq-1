@@ -1,0 +1,63 @@
+# SQ1D R5: OSC 1 wave scan (RAND); LFO 1 SINE synced 1/2; MODES: unison 3, detune, drift; MOD+ RAND -> cutoff;
+# SPLIT/LAYER: LAYER on; a chord; MASTER LOOK MODERN: ENV, LFO, OSC graphs; NRPN cutoff; MUTATE; WRITE (with the
+# extension block); TUNING JUST; RANDOM
+100 btn 6
+150 enc 0 2
+200 enc 2 16
+250 enc 3 40
+300 shot
+350 btn 5
+400 enc 0 2
+450 enc 2 1
+500 enc 3 5
+550 shot
+600 btn 7
+650 enc 0 2
+700 enc 2 2
+750 enc 3 20
+800 enc 4 30
+850 shot
+900 btn 7
+950 enc 2 1
+1000 enc 3 3
+1050 shot
+1100 btn 7
+1150 enc 2 16
+1200 enc 3 2
+1250 enc 4 30
+1300 shot
+1400 keys 0x4891
+2400 shot
+2500 keys 0
+2600 btndown 7
+3300 btnup 7
+3350 enc 0 2
+3400 enc 3 1
+3450 btn 4
+3500 shot
+3550 btn 5
+3600 shot
+3650 btn 6
+3700 shot
+3800 midi 0xB0 99 7
+3810 midi 0xB0 98 0
+3820 midi 0xB0 6 30
+3900 btndown 6
+3950 btn 4
+4000 btnup 6
+4100 shot
+4200 btn 9
+4300 btn 1
+4500 btndown 6
+4550 keys 0x1000000
+4600 keys 0
+4650 btnup 6
+4700 enc 2 1
+4750 shot
+4800 btndown 6
+4850 btn 5
+4900 btnup 6
+4950 keys 0x91
+5500 keys 0
+5600 shot
+6000 end

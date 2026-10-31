@@ -73,6 +73,61 @@ static void pg_fields(void)
     cv_blit(0, 24);
 }
 
+/* (R5 MODERN) the graphs: in the focus area's canvas, y 26..100 (0 at 63) */
+static void pg_graph_env(const esq_env_t *e)
+{
+    int32_t t[4] = {e->t1, e->t2, e->t3, e->t4}, l[5] = {0, e->l1, e->l2, e->l3, 0}, x = 8, i, sum = 0, w;
+    for (i = 0; i < 4; i++) sum += t[i] + 6;
+    for (i = 0; i < 4; i++) {
+        int32_t x1;
+        w = (196 * (t[i] + 6)) / sum;
+        x1 = x + w;
+        if (i == 3) { cv_line(x, 63 - l[3] * 36 / 63, x + 28, 63 - l[3] * 36 / 63, UI_ACC); x += 28; x1 = x + w; }
+        cv_line(x, 63 - l[i] * 36 / 63, x1, 63 - l[i + 1] * 36 / 63, UI_ACC);
+        x = x1;
+    }
+}
+static void pg_graph_lfo(uint32_t k)
+{
+    const esq_lfo_t *p = &sq_edit.lfo[k];
+    uint32_t sh = sq_edit.x.lfo_shape[k], i, r = 0x1234u;
+    int32_t px = 8, py = 63, rv[4];
+    for (i = 0; i < 4u; i++) { r = r * 1664525u + 1013904223u; rv[i] = (int32_t)(int8_t)(r >> 24); }
+    for (i = 0; i <= 224u; i += 2u) {
+        uint32_t ph = (i * 256u / 224u) & 255u, cyc = 0;
+        int32_t a = (int32_t)ph - 128, w;
+        if (sh == ESQ_LSH_SINE) w = -(a * (128 - (a < 0 ? -a : a))) / 32;
+        else if (sh == ESQ_LSH_RAMPDN) w = 127 - (int32_t)ph;
+        else if (sh >= ESQ_LSH_SH) {            /* (random: four made-up cycles' worth, a quarter each) */
+            cyc = i * 4u / 225u;
+            ph = (i * 1024u / 224u) & 255u;
+            w = sh == ESQ_LSH_SH ? rv[cyc] : rv[cyc] + (((rv[(cyc + 1u) & 3u] - rv[cyc]) * (int32_t)ph) >> 8);
+        } else if ((p->wave & 3u) == ESQ_LFO_TRI) { int32_t b = (int8_t)ph; w = ((b < 0 ? ~b : b) - 64) * 2; }
+        else if ((p->wave & 3u) == ESQ_LFO_SAW) w = (int8_t)(uint8_t)(ph + 128u);
+        else if ((p->wave & 3u) == ESQ_LFO_SQR) w = ph < 128u ? 0 : 127;
+        else { r = r * 1664525u + 1013904223u; w = (int32_t)(int8_t)(r >> 24); }
+        w = 63 - w * 36 / 128;
+        if (i) cv_line(px, py, 8 + (int32_t)i, w, UI_ACC);
+        px = 8 + (int32_t)i; py = w;
+    }
+}
+static void pg_graph_wave(uint32_t wave)
+{
+    const esq_zone_t *z;
+    const uint8_t *d;
+    uint32_t n, i;
+    int32_t py = 63;
+    if (wave >= sq_bank.nwaves || !sq_bank.wave[wave].nzones) return;
+    z = esq_wave_zone(&sq_bank, wave, 60);
+    d = sq_bank.data + z->offset;
+    n = 1u << z->log2len;
+    for (i = 0; i < 224u; i++) {                /* (the table, 224 columns of it) */
+        int32_t y = 63 - ((int32_t)d[i * n / 224u] - 128) * 36 / 128;
+        if (i) cv_line(8 + (int32_t)i - 1, py, 8 + (int32_t)i, y, UI_ACC);
+        py = y;
+    }
+}
+
 /* the cursor's field, large: its full name, its value, its place in the range */
 static void pg_focus(void)
 {
@@ -84,6 +139,18 @@ static void pg_focus(void)
     if (fm1_ms < ui_msg_until) {                /* a message (UNDO, COPY, a received program) for 2 s */
         cv_text(8, 24, &FONT_L, ui_msg[0], VFD);
         cv_text(8, 66, &FONT_S, ui_msg[1], VFD_DIM);
+        cv_blit(0, 104);
+        return;
+    }
+    if (ui_modern && (ed_pg == PG_ENV || ed_pg == PG_LFO || ed_pg == PG_OSC)) {   /* (R5 MODERN) the field on a line,
+                                                 * under it the envelope, the LFO's cycle or the wave */
+        fld_text(ed_pg, ed_slot[ed_pg], f, t);
+        cv_text(8, 4, &FONT_S, f->name, VFD_DIM);
+        cv_text(232 - text_w(&FONT_S, t), 4, &FONT_S, t, VFD);
+        cv_rect(8, 63, 224, 1, VFD_DIM);
+        if (ed_pg == PG_ENV) pg_graph_env(&sq_edit.env[ed_slot[ed_pg] % 4u]);
+        else if (ed_pg == PG_LFO) pg_graph_lfo(ed_slot[ed_pg] % 3u);
+        else pg_graph_wave(sq_edit.osc[ed_slot[ed_pg] % 3u].wave);
         cv_blit(0, 104);
         return;
     }

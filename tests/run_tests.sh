@@ -62,6 +62,13 @@ run "R4.1: a 40-program dump with another sender's SysEx inside it is still take
 run "R4: editor command 102 (esq_syx.py send --to cartb): a 40-program dump straight into CART B" sh -c \
     "sh tests/run_host.sh $OUT/to_cartb.txt | grep -q 'bank 2 saved'"
 
+# R5: the extension pages (scan, LFO shape / sync, unison, drift, MOD+), LAYER, MODERN look, NRPN, MUTATE, WRITE with
+# the extension block, TUNING, RANDOM: sound, and the extension sector stored
+run "R5: extension fields, LAYER, MODERN, NRPN, MUTATE / RANDOM, WRITE (tests/sq1d_r5.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r5.txt > $OUT/r5.log; \
+    grep -q 'bank 3 saved (1280 B)' $OUT/r5.log && python3 -c \"
+import wave, array; w = wave.open('$OUT/sq1d.wav'); a = array.array('h'); a.frombytes(w.readframes(w.getnframes()))
+assert max(abs(x) for x in a) > 1000, 'silent'\""
+
 # the wave bank's install over SysEx (sq_waves.h) with the placeholder image: taken, CRC checked
 python3 tools/sq_waves_syx.py --placeholder "$OUT/sq_ph.syx" >/dev/null \
     && run "wave bank install (SysEx 96-99, the placeholder image)" sh -c \

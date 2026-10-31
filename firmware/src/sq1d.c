@@ -72,11 +72,13 @@ static void sq_send_raw(const uint8_t *p, uint32_t n) { (void)ota_wire_send(p, n
 static uint32_t keys_prev;
 static uint8_t key_note[NKEY];                  /* the note each key started (an octave change while held) */
 
-/* EDIT held + a key: a page, in the ESQ-1's page-button order, then PERFORM, ARP, SEQ, MASTER, MIDI, STORAGE */
+/* EDIT held + a key: a page, in the ESQ-1's page-button order (and MOD+), then PERFORM, ARP, SEQ, MASTER, MIDI,
+ * STORAGE, TUNING */
 static const uint8_t KEY_PG[] = {PG_OSC, PG_OSC, PG_OSC, PG_DCA, PG_DCA, PG_DCA, PG_FILT, PG_DCA4, PG_ENV, PG_ENV, PG_ENV,
-                                 PG_ENV, PG_LFO, PG_LFO, PG_LFO, PG_MODES, PG_SPLIT, PG_PERF, PG_ARP, PG_SEQ, PG_MASTER,
-                                 PG_MIDI, PG_STORE};
-static const uint8_t KEY_SLOT[] = {0, 1, 2, 0, 1, 2, 0, 0, 0, 1, 2, 3, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0};
+                                 PG_ENV, PG_LFO, PG_LFO, PG_LFO, PG_MODES, PG_SPLIT, PG_XMOD, PG_PERF, PG_ARP, PG_SEQ,
+                                 PG_MASTER, PG_MIDI, PG_STORE, PG_TUNE};
+static const uint8_t KEY_SLOT[] = {0, 1, 2, 0, 1, 2, 0, 0, 0, 1, 2, 3, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+#define NRING 18u                               /* (SELECT's round of the program's pages: KEY_PG's first) */
 static uint32_t edit_used;                      /* EDIT was a modifier while held: its release is no tap */
 #define KEY_NONE 255u
 #define HOLD_MS 600u                            /* GLO / ARP held this long: their second meaning */
@@ -115,6 +117,35 @@ static void keys_in(void)
     keys_prev = now;
 }
 
+/* (R5) every program parameter over MIDI: NRPN (CC 99 / 98, then data entry CC 6) MSB the page (1-3 OSC 1-3, 4-6
+ * DCA 1-3, 7 FILTER, 8 DCA 4, 9-12 ENV 1-4, 13-15 LFO 1-3, 16 MODES, 17 SPLIT/LAYER, 18 MOD+), LSB the field (its
+ * place in the page's table), the value from the field's lowest (0) up; and CC 74 cutoff, 71 resonance, 73 ENV 4
+ * attack, 72 release, 5 glide. 1: the CC was one of these */
+static const uint8_t NRPN_PG[19] = {0, PG_OSC, PG_OSC, PG_OSC, PG_DCA, PG_DCA, PG_DCA, PG_FILT, PG_DCA4, PG_ENV, PG_ENV,
+                                    PG_ENV, PG_ENV, PG_LFO, PG_LFO, PG_LFO, PG_MODES, PG_SPLIT, PG_XMOD};
+static const uint8_t NRPN_SL[19] = {0, 0, 1, 2, 0, 1, 2, 0, 0, 0, 1, 2, 3, 0, 1, 2, 0, 0, 0};
+static int cc_param(uint32_t cc, uint32_t v)
+{
+    static uint8_t msb = 127, lsb = 127;
+    switch (cc) {
+    case 99: msb = (uint8_t)v; return 1;
+    case 98: lsb = (uint8_t)v; return 1;
+    case 6:
+        if (msb >= 1u && msb < sizeof NRPN_PG) {
+            const page_t *p = &PAGES[NRPN_PG[msb]];
+            if (lsb < (uint32_t)p->n1 + p->n2) ed_set_abs(NRPN_PG[msb], NRPN_SL[msb], lsb, ed_fld(NRPN_PG[msb], lsb)->lo + (int32_t)v);
+        }
+        return 1;
+    case 38: return 1;                          /* (data entry's fine half: the fields are 7-bit) */
+    case 74: ed_set_abs(PG_FILT, 0, 0, (int32_t)v); return 1;
+    case 71: ed_set_abs(PG_FILT, 0, 1, (int32_t)v / 4); return 1;
+    case 73: ed_set_abs(PG_ENV, 3, 5, (int32_t)v / 2); return 1;
+    case 72: ed_set_abs(PG_ENV, 3, 8, (int32_t)v / 2); return 1;
+    case 5: ed_set_abs(PG_MODES, 0, 3, (int32_t)v / 2); return 1;
+    default: return 0;
+    }
+}
+
 static void midi_in(void)
 {
     uint8_t st, d1, d2;
@@ -133,7 +164,7 @@ static void midi_in(void)
         case 0x80: pl_input(0, d1, 0); break;
         case 0xB0:
             if (d1 == 123u) { sq_event(EV_PANIC, d1, d2, 0); direct_all_off(); arp_clear(); }
-            else sq_event(EV_CC, d1, d2, 0);
+            else if (!cc_param(d1, d2)) sq_event(EV_CC, d1, d2, 0);
             break;
         case 0xC0: if (sys.rxprog) prog_load(sq_cur / NSLOT * NSLOT + d1 % NSLOT); break;   /* within the set, as the ESQ-1's 0-39 */
         case 0xD0: sq_event(EV_PRESS, 0, sys_press(d1), 0); break;
@@ -167,9 +198,9 @@ static int32_t accel(uint32_t enc, int32_t d, const fld_t *f)
  * SPLIT/LAYER, round), elsewhere round the page's own screens */
 static void scr_step(int32_t d)
 {
-    uint32_t pg = ed_pg, ns = ed_scr_n(pg), k, nring = 17;
+    uint32_t pg = ed_pg, ns = ed_scr_n(pg), k, nring = NRING;
     int32_t sc = (int32_t)(ed_scr[pg] % ns) + d;
-    if (pg >= PG_OSC && pg <= PG_SPLIT) {
+    if (pg >= PG_OSC && pg <= PG_XMOD) {
         for (k = 0; k < nring && !(KEY_PG[k] == pg && KEY_SLOT[k] == ed_slot[pg] % PAGES[pg].nslot); k++) {}
         if (k == nring) k = 0;
         while (sc < 0 || sc >= (int32_t)ed_scr_n(KEY_PG[k])) {
@@ -195,11 +226,12 @@ static void page_button(uint32_t b)
         break;
     case BTN_ENV: if (pg == PG_ENV) page_go(PG_ENV, sl + 1u); else ed_pg = PG_ENV; break;
     case BTN_LFO: if (pg == PG_LFO) page_go(PG_LFO, sl + 1u); else ed_pg = PG_LFO; break;
-    case BTN_GLO:                               /* MODES > SPLIT/LAYER; on a system page the next one */
+    case BTN_GLO:                               /* MODES > SPLIT/LAYER > MOD+; on a system page the next one */
         if (pg == PG_MASTER) ed_pg = PG_MIDI;
         else if (pg == PG_MIDI) ed_pg = PG_STORE;
-        else if (pg == PG_STORE) ed_pg = PG_MASTER;
-        else ed_pg = pg == PG_MODES ? PG_SPLIT : PG_MODES;
+        else if (pg == PG_STORE) ed_pg = PG_TUNE;
+        else if (pg == PG_TUNE) ed_pg = PG_MASTER;
+        else ed_pg = pg == PG_MODES ? PG_SPLIT : pg == PG_SPLIT ? PG_XMOD : PG_MODES;
         break;
     case BTN_SEQ: ed_pg = PG_SEQ; break;
     case BTN_HOME: ed_pg = pg == PG_PROG ? PG_PERF : PG_PROG; break;
@@ -270,7 +302,9 @@ static void panel_in(void)
             }
             edit_used = 1;
         }
-        press &= ~(1u << BTN_SEL | 1u << BTN_HOME | 1u << BTN_SAVE);
+        if (press >> BTN_ENV & 1u) { if (ed_comparing) ed_compare(); ed_shake(0); ui_say("MUTATE", "EDIT + SEL: UNDO"); edit_used = 1; }
+        if (press >> BTN_LFO & 1u) { if (ed_comparing) ed_compare(); ed_shake(1); ui_say("RANDOM", "EDIT + SEL: UNDO"); edit_used = 1; }
+        press &= ~(1u << BTN_SEL | 1u << BTN_HOME | 1u << BTN_SAVE | 1u << BTN_ENV | 1u << BTN_LFO);
     } else {
         if (dp) prog_load(prog_step(sq_cur, dp, NPROG_ALL));
         if (press >> BTN_SAVE & 1u) {
@@ -356,7 +390,8 @@ static void panel_in(void)
     fm1_led_key(BTN_FX, ed_pg == PG_DCA || ed_pg == PG_FILT || ed_pg == PG_DCA4);
     fm1_led_key(BTN_ENV, ed_pg == PG_ENV);
     fm1_led_key(BTN_LFO, ed_pg == PG_LFO);
-    fm1_led_key(BTN_GLO, ed_pg == PG_MODES || ed_pg == PG_SPLIT || ed_pg == PG_MASTER || ed_pg == PG_MIDI || ed_pg == PG_STORE);
+    fm1_led_key(BTN_GLO, ed_pg == PG_MODES || ed_pg == PG_SPLIT || ed_pg == PG_XMOD || ed_pg == PG_MASTER ||
+                         ed_pg == PG_MIDI || ed_pg == PG_STORE || ed_pg == PG_TUNE);
     fm1_led_key(BTN_SEQ, ed_pg == PG_SEQ);
     fm1_led_key(BTN_HOME, ed_pg == PG_PROG || ed_pg == PG_PERF);
     fm1_led_key(BTN_ARP, sys.arp);
@@ -371,6 +406,7 @@ static void app_main(void)
     sq_waves_boot();                            /* the owner's bank, if it is in flash */
     banks_boot();
     sys_boot();
+    ui_set_look(sys.look);
     seq_boot();
     sys_saved = sys;                            /* (sys_boot's carry-over of R3's record is saved at the next change) */
     sq_bank_changed = 0;

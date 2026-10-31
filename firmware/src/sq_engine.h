@@ -39,7 +39,7 @@ static volatile uint32_t sq_bank_changed;      /* (set by sq_set_bank) the main 
  * samples) and (R4) the timed one: the sequencer's and the arpeggiator's notes, each with the sample time it is due
  * at (sq_clock's count), put in time order by sq_play.h's scheduler a few ms ahead and taken within 32 samples of it */
 enum { EV_ON, EV_OFF, EV_CC, EV_BEND, EV_PRESS, EV_PROG, EV_PANIC, EV_SET };
-enum { SET_TUNE, SET_BENDR, SET_OUT };                   /* EV_SET's a: an engine setting (MASTER), v its value */
+enum { SET_TUNE, SET_BENDR, SET_OUT, SET_TEMPO, SET_MICRO };   /* (SET_MICRO: b the note of the octave) */                   /* EV_SET's a: an engine setting (MASTER), v its value */
 typedef struct { uint8_t type, a, b, pad; int16_t v; } sq_ev_t;
 #define SQ_NQ 128u
 #define SQ_NTQ 256u
@@ -80,26 +80,76 @@ static volatile uint32_t ui_nvoices, ui_render_us, ui_irq_us;   /* (ISR -> UI) v
                                                  * the timer interrupt's inside it */
 static volatile uint8_t ui_vlevel[ESQ_NVOICE];  /* each voice's ENV4, 0..127 (the voice LEDs) */
 
+/* (R5) SPLIT / LAYER: up to three synths, the program (sq), its LAYER program (all the keys the program plays) and its
+ * SPLIT program (the keys on the split's side, instead of the program), eight voices among them: a note that would
+ * make more stops the oldest voice of the busiest one. sq_route, set with the programs (EV_PROG), says who plays */
+static esq_synth_t sq_lay, sq_spl;
+static esq_synth_t *const SQ_SYN[3] = {&sq, &sq_lay, &sq_spl};
+typedef struct { uint8_t layer, split, key, upper; } sq_route_t;   /* upper: the split program plays from key up */
+static sq_route_t sq_route, sq_route_pend;
+static esq_patch_t sq_pend_lay, sq_pend_spl;
+static int sq_nactive(const esq_synth_t *s) { int i, n = 0; for (i = 0; i < ESQ_NVOICE; i++) n += s->v[i].active; return n; }
+static void sq_cap(esq_synth_t *to)              /* room for to's next note (its unison) within eight voices */
+{
+    int need = to->patch.x.uni > 1u ? (to->patch.x.uni > 4u ? 4 : to->patch.x.uni) : 1, k;
+    for (k = 0; k < 8; k++) {
+        int tot = sq_nactive(&sq) + sq_nactive(&sq_lay) + sq_nactive(&sq_spl), most = -1, mi = 0, i, j;
+        esq_voice_t *old = 0;
+        if (tot + need <= ESQ_NVOICE) return;
+        for (j = 0; j < 3; j++) { int n = sq_nactive(SQ_SYN[j]); if (n > most) { most = n; mi = j; } }
+        for (i = 0; i < ESQ_NVOICE; i++) {      /* its oldest released voice, else its oldest */
+            esq_voice_t *v = &SQ_SYN[mi]->v[i];
+            if (v->active && (!old || (!v->gate && old->gate) || (v->gate == old->gate && v->age < old->age))) old = v;
+        }
+        if (!old) return;
+        old->active = 0;
+    }
+}
+static void sq_on(esq_synth_t *s, uint32_t note, uint32_t vel)
+{
+    if (sq_route.layer || sq_route.split) sq_cap(s);
+    esq_note_on(s, (int)note, (int)vel);
+}
 static void sq_do(const sq_ev_t *e)
 {
+    uint32_t j;
     switch (e->type) {
-    case EV_ON: if (e->b) esq_note_on(&sq, e->a, e->b); else esq_note_off(&sq, e->a); break;
-    case EV_OFF: esq_note_off(&sq, e->a); break;
-    case EV_CC:
-        if (e->a == 120u) { int i; for (i = 0; i < ESQ_NVOICE; i++) sq.v[i].active = 0; }   /* all sound off */
-        else esq_cc(&sq, e->a, e->b);
+    case EV_ON:
+        if (!e->b) { for (j = 0; j < 3u; j++) esq_note_off(SQ_SYN[j], e->a); break; }
+        if (sq_route.split && (sq_route.upper ? e->a >= sq_route.key : e->a < sq_route.key)) sq_on(&sq_spl, e->a, e->b);
+        else {
+            sq_on(&sq, e->a, e->b);
+            if (sq_route.layer) sq_on(&sq_lay, e->a, e->b);
+        }
         break;
-    case EV_BEND: esq_bend(&sq, e->v); break;
-    case EV_PRESS: esq_pressure(&sq, e->b); break;
-    case EV_PROG:
-        sq.patch = sq_pend;                     /* sounding notes go on with the new program, as on the ESQ-1 */
+    case EV_OFF: for (j = 0; j < 3u; j++) esq_note_off(SQ_SYN[j], e->a); break;   /* (all: the routing may have changed) */
+    case EV_CC:
+        for (j = 0; j < 3u; j++) {
+            if (e->a == 120u) { int i; for (i = 0; i < ESQ_NVOICE; i++) SQ_SYN[j]->v[i].active = 0; }   /* all sound off */
+            else esq_cc(SQ_SYN[j], e->a, e->b);
+        }
+        break;
+    case EV_BEND: for (j = 0; j < 3u; j++) esq_bend(SQ_SYN[j], e->v); break;
+    case EV_PRESS: for (j = 0; j < 3u; j++) esq_pressure(SQ_SYN[j], e->b); break;
+    case EV_PROG:                               /* sounding notes go on with the new program, as on the ESQ-1 */
+        sq.patch = sq_pend;
+        sq_lay.patch = sq_pend_lay;
+        sq_spl.patch = sq_pend_spl;
+        if (!sq_route_pend.layer && sq_route.layer) esq_all_off(&sq_lay);
+        if (!sq_route_pend.split && sq_route.split) esq_all_off(&sq_spl);
+        sq_route = sq_route_pend;
         break;
     case EV_SET:
-        if (e->a == SET_TUNE) sq.master_tune = e->v;
-        else if (e->a == SET_BENDR) sq.bend_range = e->v;
-        else if (e->a == SET_OUT) sq.out_clean = (uint8_t)e->v;
+        for (j = 0; j < 3u; j++) {
+            esq_synth_t *s = SQ_SYN[j];
+            if (e->a == SET_TUNE) s->master_tune = e->v;
+            else if (e->a == SET_BENDR) s->bend_range = e->v;
+            else if (e->a == SET_OUT) s->out_clean = (uint8_t)e->v;
+            else if (e->a == SET_TEMPO) s->tempo = (uint8_t)e->v;
+            else if (e->a == SET_MICRO) s->micro[e->b % 12u] = (int8_t)e->v;
+        }
         break;
-    default: esq_all_off(&sq); break;
+    default: for (j = 0; j < 3u; j++) esq_all_off(SQ_SYN[j]); break;
     }
 }
 static void sq_take_events(uint32_t until)
@@ -123,6 +173,13 @@ static void sq_take_events(uint32_t until)
 static int32_t sq_l[HALF_FRAMES], sq_r[HALF_FRAMES];
 static volatile uint32_t sq_ready;              /* sq_engine_init has run: the audio starts before app_main does, and a
                                                  * synth not set up yet (DOC period 0) would loop in the ISR for ever */
+static void sq_mix(esq_synth_t *s, uint32_t o, uint32_t m)   /* another synth's chunk, added */
+{
+    static int32_t l[ESQ_CHUNK], r[ESQ_CHUNK];
+    uint32_t i;
+    esq_render_q(s, l, r, m);
+    for (i = 0; i < m; i++) { sq_l[o + i] += l[i]; sq_r[o + i] += r[i]; }
+}
 static void sq_render(int32_t *out, uint32_t n)
 {
     uint32_t i, nv = 0, o;
@@ -136,6 +193,8 @@ static void sq_render(int32_t *out, uint32_t n)
         uint32_t m = n - o < ESQ_CHUNK ? n - o : ESQ_CHUNK;
         sq_take_events(sq_clock + o + m);
         esq_render_q(&sq, sq_l + o, sq_r + o, m);
+        if (sq_route.layer || sq_nactive(&sq_lay)) sq_mix(&sq_lay, o, m);   /* (R5) LAYER, SPLIT */
+        if (sq_route.split || sq_nactive(&sq_spl)) sq_mix(&sq_spl, o, m);
     }
     sq_clock += n;
     for (i = 0; i < n; i++) {                   /* the output stage's full scale (1 << 24) to the platform's Q15 */
@@ -148,6 +207,7 @@ static void sq_render(int32_t *out, uint32_t n)
         ui_vlevel[i] = (uint8_t)(lv < 0 ? 0 : lv > 127 ? 127 : lv);
         nv += sq.v[i].active;
     }
+    nv += (uint32_t)(sq_nactive(&sq_lay) + sq_nactive(&sq_spl));
     ui_nvoices = nv;
 }
 
@@ -176,8 +236,8 @@ static int sq_set_bank(const uint8_t *img, uint32_t len)
     int rc = -1, i;
     if (img && len) rc = sq_bank_ram(img, len);
     if (rc) (void)sq_bank_ram(ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
-    for (i = 0; i < ESQ_NVOICE; i++) sq.v[i].active = 0;
-    sq.nheld = 0;
+    for (i = 0; i < ESQ_NVOICE; i++) sq.v[i].active = sq_lay.v[i].active = sq_spl.v[i].active = 0;
+    sq.nheld = sq_lay.nheld = sq_spl.nheld = 0;
     sq_bank_changed = 1;
     return rc;
 }
@@ -203,6 +263,8 @@ static void sq_engine_init(void)
 #endif
     if (!loaded) (void)sq_bank_ram(ESQ_PHBANK, sizeof ESQ_PHBANK_U.b);
     esq_init(&sq, FS, &sq_bank);
+    esq_init(&sq_lay, FS, &sq_bank);
+    esq_init(&sq_spl, FS, &sq_bank);
     sq.volume = 127;
     sq_rom_program(0, &p);
     esq_set_patch(&sq, &p);
