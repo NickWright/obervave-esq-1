@@ -34,7 +34,7 @@ NickWright/obervave-esq-1 (the name is historical). Branch `esq1` keeps the earl
 | R2 (done) | Program memory: ROM 40 (read only), INT 40, CART A, CART B (40 each, flash); WRITE; ESQ-1 SysEx single / bank dumps in and out, requests |
 | R3 (done) | The page editor (below), VFD look, cursor + data entry, COMPARE, undo, INIT, copy OSC / ENV / LFO |
 | R4 (built) | CPU (the engine at -O2, its sample loop in RAM); the button layout below; PERFORM; system pages MASTER, MIDI, STORAGE; IMPORT asks; arpeggiator, latch, chord memory; a sequencer (8 patterns) |
-| R5 | MODERN look (the same fields + envelope / LFO / wave graphics); enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), arpeggiator, latch, chord memory, CC / NRPN for every parameter, velocity / pressure curves, MUTATE / RANDOM |
+| R5 | MODERN look (the same fields + envelope / LFO / wave graphics); enhancements, each in the engine + the program's extension block + page fields: AM + SYNC together, Q as a mod destination, LFO shapes (sine, ramps, S&H, smooth random, drunk), LFO tempo sync and one-shot, looping envelopes, wave scanning, microtuning, unison, DRIFT, more velocity destinations, sources random / round-robin / key zones, SPLIT / LAYER (two programs), CC / NRPN for every parameter, MUTATE / RANDOM |
 | R6 | CPU on the device, factory programs, 1.0 |
 
 Not planned before 1.0: the ESQ-1's sequencer, effects.

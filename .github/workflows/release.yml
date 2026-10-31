@@ -40,7 +40,15 @@ jobs:
           test -d ~/fw-AC79_AIoT_SDK
 
       - name: Build (the FM-1)
-        run: sh build.sh
+        run: |                                   # (a failure, and the build's summary, as annotations: readable without the log)
+          mkdir -p build
+          if ! sh build.sh > build/build.log 2>&1; then
+            cat build/build.log
+            echo "::error title=build::$(tail -c 1800 build/build.log | tr '\n' '|')"
+            exit 1
+          fi
+          cat build/build.log
+          echo "::notice title=build::$(grep -iE 'ram|image|bss|insns|bytes|free' build/build.log | tail -c 1500 | tr '\n' '|')"
 
       - name: Host tests
         run: sh tests/run_tests.sh
