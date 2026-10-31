@@ -722,6 +722,14 @@ ESQ_HOTINL void esq_voice_run_in(const esq_synth_t *s, esq_voice_t *v, const uin
          * a sample holds at most one DOC frame (more only for a host's faster DOC) */
         uint32_t sync = s->patch.modes.sync, am = s->patch.modes.am;
         int32_t h = v->hold, x = v->hold_x, kx = v->kx;
+        /* (SQ1D R5.1) the oscillators' state in locals: the wave tables are bytes, which the compiler must assume
+         * alias the voice, so through v every frame reloaded it. One-shot zones keep the frame as it was (halts) */
+        const int fast = !v->oneshot;
+        uint32_t p0 = v->ph[0], p1 = v->ph[1], p2 = v->ph[2];
+        const uint32_t i0 = v->inc[0], i1 = v->inc[1], i2 = v->inc[2];
+        const uint8_t *t0 = v->tab[0], *t1 = v->tab[1], *t2 = v->tab[2];
+        const uint32_t s0h = v->shift[0], s1h = v->shift[1], s2h = v->shift[2];
+        const int32_t v0 = (int32_t)v->vol[0], v1 = (int32_t)v->vol[1], v2 = (int32_t)v->vol[2];
         for (j = 0; j < m; j++) {
             int32_t c = 0, d, e, al = 0, ae = 0;
             for (t = 0; t < ticks[j]; t++) {
@@ -731,8 +739,25 @@ ESQ_HOTINL void esq_voice_run_in(const esq_synth_t *s, esq_voice_t *v, const uin
                 al += d * x;
                 ae += (qhw[d] * e) >> 11;
                 h = x + ((qhe[d] * e) >> 11);
-                esq_doc_frame(v, sync, am);
-                x = v->doc_out * 4;
+                if (fast) {                       /* esq_doc_frame, without one-shots */
+                    uint32_t n0 = p0 + i0;
+                    int32_t a, sm0;
+                    p1 = sync && n0 < p0 ? 0u : p1 + i1;
+                    p0 = n0;
+                    p2 += i2;
+                    sm0 = t0[p0 >> s0h];
+                    a = (sm0 - 128) * v0;
+                    if (am)
+                        a += (t1[p1 >> s1h] - 128) * sm0;
+                    else if (v1)
+                        a += (t1[p1 >> s1h] - 128) * v1;
+                    if (v2)
+                        a += (t2[p2 >> s2h] - 128) * v2;
+                    x = a * 4;
+                } else {
+                    esq_doc_frame(v, sync, am);
+                    x = v->doc_out * 4;
+                }
             }
             d = ESQ_HOLD_SUB - c;
             e = h - x;
@@ -743,6 +768,10 @@ ESQ_HOTINL void esq_voice_run_in(const esq_synth_t *s, esq_voice_t *v, const uin
             ESQ_TAP_X(v, buf[j]);
         }
         v->hold = h, v->hold_x = x;
+        if (fast) {
+            v->ph[0] = p0, v->ph[1] = p1, v->ph[2] = p2;
+            v->doc_out = x / 4;
+        }
     }
     {   /* CEM3379: compensated resonance, input clip, 4 poles, x7.5 into its 5 Vpp swing */
         int32_t f0 = v->fs[0], f1 = v->fs[1], f2 = v->fs[2], f3 = v->fs[3];
@@ -764,6 +793,17 @@ ESQ_HOTINL void esq_voice_run_in(const esq_synth_t *s, esq_voice_t *v, const uin
         int32_t vg = v->vg, vg_t = v->vg_t;
         if (or_) {
             int32_t pl = v->pl, pr = v->pr, pl_t = v->pl_t, pr_t = v->pr_t;
+            if (vg == vg_t && pl == pl_t && pr == pr_t) {   /* (R5.1) settled: their steps are all 0, same output */
+                for (j = 0; j < m; j++) {
+                    int32_t i = buf[j] - (int32_t)(hp >> 8), o;
+                    hp += ESQ_MUL64(i, ESQ_Q_HA) >> 23;
+                    i = buf[j] - (int32_t)(hp >> 8);
+                    i = i > ESQ_Q_IMAX ? ESQ_Q_IMAX : i < -ESQ_Q_IMAX ? -ESQ_Q_IMAX : i;
+                    o = esq_tanh_q(esq_m28(i, vg));
+                    ol[j] += ESQ_MSH(o, pl, 17);
+                    or_[j] += ESQ_MSH(o, pr, 17);
+                }
+            } else
             for (j = 0; j < m; j++) {
                 int32_t i = buf[j] - (int32_t)(hp >> 8), o;
                 hp += ESQ_MUL64(i, ESQ_Q_HA) >> 23;
