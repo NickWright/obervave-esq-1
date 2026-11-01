@@ -113,6 +113,7 @@ static const char *const CRV_NAME[] = {"LIN", "SOFT", "HARD", "FIXED"};
 static const char *const PCRV_NAME[] = {"LIN", "SOFT", "HARD", "OFF"};
 static const char *const CLK_NAME[] = {"INT", "MIDI"};
 static const char *const USB_NAME[] = {"ON", "OFF"};
+static const char *const FACT_NAME[] = {"CRT B"};
 static const char *const OUT_NAME[] = {"ORIG", "CLEAN"};   /* the original's output stage saturating, or not */
 static const char *const IMP_NAME[] = {"ASK", "INT", "CRT A", "CRT B"};
 static const char *const DMP_NAME[] = {"INT", "CRT A", "CRT B", "ROM", "EDIT"};
@@ -149,7 +150,8 @@ static const fld_t F_MIDI_[] = {
     {"CLOCK", "CLOCK SOURCE", K_ENUM, 0, 1, F_S(clock), CLK_NAME}, {"CKOUT", "CLOCK OUT", K_ONOFF, 0, 1, F_S(clkout)}};
 static const fld_t F_STO_[] = {
     {"IN 40", "40-PROGRAM DUMP IN", K_ENUM, 0, 3, F_S(imp), IMP_NAME},
-    {"OUT", "DUMP OUT: SAVE SENDS", K_ENUM, 0, 4, F_S(dump), DMP_NAME}};
+    {"OUT", "DUMP OUT: SAVE SENDS", K_ENUM, 0, 4, F_S(dump), DMP_NAME},
+    {"FACT", "SAVE TWICE: FACTORY > CART B", K_ENUM, 0, 0, F_S(pad2), FACT_NAME}};
 
 static const page_t PAGES[NPG] = {
     [PG_PROG] = {"PROGRAM", 1, 0, 0, 0},
@@ -159,7 +161,7 @@ static const page_t PAGES[NPG] = {
     [PG_XMOD] = {"MOD+", 1, 3, 4, F_XM_}, [PG_TUNE] = {"TUNING", 1, 2, 0, F_TUNE_},
     [PG_PERF] = {"PERFORM", 1, 4, 4, F_PERF_}, [PG_ARP] = {"ARP", 1, 5, 4, F_ARP_}, [PG_SEQ] = {"SEQ", 1, 5, 5, F_SEQ_},
     [PG_MASTER] = {"MASTER", 1, 3, 7, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
-    [PG_STORE] = {"STORAGE", 1, 2, 0, F_STO_}};
+    [PG_STORE] = {"STORAGE", 1, 3, 0, F_STO_}};
 
 /* (R4.1) screens: each page in screens of at most four fields, one under each knob (KNOB 1-4 left to right); SELECT
  * steps through them. Field indices in hex, screens apart by '/' (ENV: the levels, the times, the two scalings) */
@@ -167,7 +169,7 @@ static const char *const SCR[NPG] = {
     [PG_PROG] = "", [PG_OSC] = "0123/4567/89", [PG_DCA] = "01/2345", [PG_FILT] = "012/3456/78", [PG_DCA4] = "0123",
     [PG_ENV] = "0123/5678/49a", [PG_LFO] = "0123/4567/89a", [PG_MODES] = "0123/4567/89a", [PG_SPLIT] = "0123/4567",
     [PG_XMOD] = "012/345/6", [PG_PERF] = "0123/4567", [PG_ARP] = "0123/4567/8", [PG_SEQ] = "0123/5678/49",
-    [PG_MASTER] = "012/3456/789", [PG_MIDI] = "012/34", [PG_STORE] = "01", [PG_TUNE] = "01"};
+    [PG_MASTER] = "012/3456/789", [PG_MIDI] = "012/34", [PG_STORE] = "012", [PG_TUNE] = "01"};
 static uint32_t ed_scr_n(uint32_t pg)           /* the page's screens */
 {
     const char *c = SCR[pg];

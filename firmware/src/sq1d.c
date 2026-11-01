@@ -25,6 +25,7 @@ static void sq_sx_byte(uint32_t b);
 #include "platform.c"
 #include "sq_engine.h"
 #include "sq_waves.h"
+#include "sq_factory.h"
 #include "sq_prog.h"
 #include "sq_ui.h"
 #include "sq_sys.h"
@@ -312,6 +313,16 @@ static void panel_in(void)
                 char t[20] = "PATTERN ";
                 ui_fmt_u(t, sys.patt);
                 ui_say(seq_store() ? "NOT STORED" : "STORED", t);
+            } else if (ed_pg == PG_STORE && ed_cur[PG_STORE] == 2u) {   /* FACT: twice within 3 s */
+                static uint32_t armed;
+                if (armed && fm1_ms - armed < 3000u) {
+                    armed = 0;
+                    ui_say(factory_restore() ? "NOT STORED" : "FACTORY PROGRAMS", "IN CART B");
+                    if (sq_cur / NSLOT == 2u) prog_load(sq_cur);
+                } else {
+                    armed = fm1_ms ? fm1_ms : 1u;
+                    ui_say("SAVE AGAIN:", "CART B REPLACED");
+                }
             } else if (ed_pg == PG_STORE) {     /* STORAGE: the dump SEND names, out over USB */
                 static const uint8_t A[5] = {0, 1, 2, 3, 0};
                 (void)sq_ed_more(sys.dump == DMP_EDIT ? 101u : 100u, &A[sys.dump % 5u], 1);

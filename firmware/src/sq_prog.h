@@ -111,10 +111,19 @@ static void prog_load(uint32_t g)
 static void set_defaults(uint32_t set)
 {
     uint32_t k;
+    memset(sq_ext[set], 0, sizeof sq_ext[set]);
     for (k = 0; k < NSLOT; k++)
         if (set == 0u) prog_pcb(SET_ROM * NSLOT + k, sq_pcb[set][k]);
-        else esq_patch_to_pcb(&ESQ_DEMO_PATCHES[0], sq_pcb[set][k]);
-    memset(sq_ext[set], 0, sizeof sq_ext[set]);
+        else if (set == 2u && k < SQ_NFACTORY) {   /* (R6) CART B: SQ1D's own programs */
+            esq_patch_to_pcb(&SQ_FACTORY[k], sq_pcb[set][k]);
+            sq_ext[set][k] = SQ_FACTORY[k].x;
+        } else esq_patch_to_pcb(&ESQ_DEMO_PATCHES[0], sq_pcb[set][k]);
+}
+static int set_store(uint32_t set);
+static int factory_restore(void)               /* (R6) CART B back to SQ1D's own programs, in flash. 0: done */
+{
+    set_defaults(2);
+    return set_store(2);
 }
 static int set_store(uint32_t set)            /* 0: in flash (the erase stalls the audio ~50 ms) */
 {

@@ -1,0 +1,79 @@
+# SQ1D R6: CART B's factory programs, each with a chord (run_tests.sh measures each); STORAGE FACT: SAVE twice
+100 enc 6 80
+500 keys 0x891
+2000 keys 0
+2900 enc 6 1
+3000 keys 0x891
+4500 keys 0
+5400 enc 6 1
+5500 keys 0x891
+7000 keys 0
+7900 enc 6 1
+8000 keys 0x891
+9500 keys 0
+10400 enc 6 1
+10500 keys 0x891
+12000 keys 0
+12900 enc 6 1
+13000 keys 0x891
+14500 keys 0
+15400 enc 6 1
+15500 keys 0x891
+17000 keys 0
+17900 enc 6 1
+18000 keys 0x891
+19500 keys 0
+20400 enc 6 1
+20500 keys 0x891
+22000 keys 0
+22900 enc 6 1
+23000 keys 0x891
+24500 keys 0
+25400 enc 6 1
+25500 keys 0x891
+27000 keys 0
+27900 enc 6 1
+28000 keys 0x891
+29500 keys 0
+30400 enc 6 1
+30500 keys 0x891
+32000 keys 0
+32900 enc 6 1
+33000 keys 0x891
+34500 keys 0
+35400 enc 6 1
+35500 keys 0x891
+37000 keys 0
+37900 enc 6 1
+38000 keys 0x891
+39500 keys 0
+40400 enc 6 1
+40500 keys 0x891
+42000 keys 0
+42900 enc 6 1
+43000 keys 0x891
+44500 keys 0
+45400 enc 6 1
+45500 keys 0x891
+47000 keys 0
+47900 enc 6 1
+48000 keys 0x891
+49500 keys 0
+50400 enc 6 1
+50500 keys 0x891
+52000 keys 0
+52900 enc 6 1
+53000 keys 0x891
+54500 keys 0
+55400 enc 6 1
+55500 keys 0x891
+57000 keys 0
+57900 enc 6 1
+58000 btndown 6
+58050 keys 0x800000
+58100 keys 0
+58150 btnup 6
+58200 enc 4 1
+58300 btn 9
+58400 btn 9
+58600 end

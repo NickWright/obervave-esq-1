@@ -69,6 +69,14 @@ run "R5: extension fields, LAYER, MODERN, NRPN, MUTATE / RANDOM, WRITE (tests/sq
 import wave, array; w = wave.open('$OUT/sq1d.wav'); a = array.array('h'); a.frombytes(w.readframes(w.getnframes()))
 assert max(abs(x) for x in a) > 1000, 'silent'\""
 
+# R6: the factory programs (CART B) all sound; STORAGE FACT puts them back (SAVE twice)
+run "R6: factory programs, FACT (tests/sq1d_r6.txt)" sh -c "sh tests/run_host.sh tests/sq1d_r6.txt > $OUT/r6.log; \
+    grep -q 'bank 2 saved' $OUT/r6.log && python3 -c \"
+import wave, array, math; w = wave.open('$OUT/sq1d.wav'); a = array.array('h'); a.frombytes(w.readframes(w.getnframes()))
+for k in range(23):
+    seg = a[int((0.7 + 2.5 * k) * 44100) * 2:int((2.0 + 2.5 * k) * 44100) * 2]
+    assert math.sqrt(sum(x * x for x in seg) / len(seg)) > 200, 'program %d silent' % (k + 1)\""
+
 # the wave bank's install over SysEx (sq_waves.h) with the placeholder image: taken, CRC checked
 python3 tools/sq_waves_syx.py --placeholder "$OUT/sq_ph.syx" >/dev/null \
     && run "wave bank install (SysEx 96-99, the placeholder image)" sh -c \
