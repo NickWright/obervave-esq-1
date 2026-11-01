@@ -162,6 +162,7 @@ typedef struct {
     int8_t micro[12];            /* (R5) cents on each note of the octave (C ..): microtuning */
     uint8_t tempo;               /* (R5) BPM, for LFO SYNC */
     uint32_t xcount, xr;         /* (R5) notes started: ALT, RR4; R5's random generator */
+    uint8_t nvoice;              /* (R6) VOICES: how many of v[] it uses (0: all) */
     int last_note;               /* poly glide starts from it (-1: none yet) */
     uint8_t held[ESQ_HELD_MAX], nheld;
     int cut_offset;              /* 1/256 semitone added to every voice's cutoff (a host's filter modulation) */

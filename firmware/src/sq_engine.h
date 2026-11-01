@@ -39,7 +39,7 @@ static volatile uint32_t sq_bank_changed;      /* (set by sq_set_bank) the main 
  * samples) and (R4) the timed one: the sequencer's and the arpeggiator's notes, each with the sample time it is due
  * at (sq_clock's count), put in time order by sq_play.h's scheduler a few ms ahead and taken within 32 samples of it */
 enum { EV_ON, EV_OFF, EV_CC, EV_BEND, EV_PRESS, EV_PROG, EV_PANIC, EV_SET };
-enum { SET_TUNE, SET_BENDR, SET_OUT, SET_TEMPO, SET_MICRO };   /* (SET_MICRO: b the note of the octave) */                   /* EV_SET's a: an engine setting (MASTER), v its value */
+enum { SET_TUNE, SET_BENDR, SET_OUT, SET_TEMPO, SET_MICRO, SET_VOICES };   /* (SET_MICRO: b the note of the octave) */                   /* EV_SET's a: an engine setting (MASTER), v its value */
 typedef struct { uint8_t type, a, b, pad; int16_t v; } sq_ev_t;
 #define SQ_NQ 128u
 #define SQ_NTQ 256u
@@ -87,6 +87,7 @@ static esq_synth_t sq_lay, sq_spl;
 static esq_synth_t *const SQ_SYN[3] = {&sq, &sq_lay, &sq_spl};
 typedef struct { uint8_t layer, split, key, upper; } sq_route_t;   /* upper: the split program plays from key up */
 static sq_route_t sq_route, sq_route_pend;
+static int sq_vmax = ESQ_NVOICE;                /* (R6) VOICES: all three synths' together */
 static esq_patch_t sq_pend_lay, sq_pend_spl;
 static int sq_nactive(const esq_synth_t *s) { int i, n = 0; for (i = 0; i < ESQ_NVOICE; i++) n += s->v[i].active; return n; }
 static void sq_cap(esq_synth_t *to)              /* room for to's next note (its unison) within eight voices */
@@ -95,7 +96,7 @@ static void sq_cap(esq_synth_t *to)              /* room for to's next note (its
     for (k = 0; k < 8; k++) {
         int tot = sq_nactive(&sq) + sq_nactive(&sq_lay) + sq_nactive(&sq_spl), most = -1, mi = 0, i, j;
         esq_voice_t *old = 0;
-        if (tot + need <= ESQ_NVOICE) return;
+        if (tot + need <= sq_vmax) return;
         for (j = 0; j < 3; j++) { int n = sq_nactive(SQ_SYN[j]); if (n > most) { most = n; mi = j; } }
         for (i = 0; i < ESQ_NVOICE; i++) {      /* its oldest released voice, else its oldest */
             esq_voice_t *v = &SQ_SYN[mi]->v[i];
@@ -147,6 +148,12 @@ static void sq_do(const sq_ev_t *e)
             else if (e->a == SET_OUT) s->out_clean = (uint8_t)e->v;
             else if (e->a == SET_TEMPO) s->tempo = (uint8_t)e->v;
             else if (e->a == SET_MICRO) s->micro[e->b % 12u] = (int8_t)e->v;
+            else if (e->a == SET_VOICES) {      /* (R6) VOICES: the ones past it stop */
+                int i;
+                s->nvoice = (uint8_t)e->v;
+                sq_vmax = e->v > 0 && e->v < ESQ_NVOICE ? e->v : ESQ_NVOICE;
+                for (i = sq_vmax; i < ESQ_NVOICE; i++) s->v[i].active = 0;
+            }
         }
         break;
     default: for (j = 0; j < 3u; j++) esq_all_off(SQ_SYN[j]); break;

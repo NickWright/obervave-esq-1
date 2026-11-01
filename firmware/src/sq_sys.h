@@ -20,12 +20,12 @@ typedef struct {
     int8_t chordi[8];                                                      /* .. its notes over the lowest */
     uint8_t tempo, swing, patt, keys;                                      /* SEQ (patt 1..8; keys 1: transpose) */
     uint8_t usboff, outclean;                                              /* (R4.1) MASTER USB AUDIO OFF, OUTPUT CLEAN */
-    uint8_t pad1[1];
+    uint8_t voices;                                                        /* (R6) MASTER VOICES 6..8 */
     uint8_t scale, skey, look, pad2;                                       /* (R5) TUNING scale and its key; MODERN */
 } sq_sys_t;
 typedef char sq_sys_size_check[sizeof(sq_sys_t) == 48u ? 1 : -1];   /* (memcmp: no hidden padding) */
 static const sq_sys_t SYS_DEFAULT = {SYS_MAGIC, 0, 0, 0, 0, 2, 100, CRV_LIN, CRV_LIN, 127, 0, 1, 0, 0, 0,
-                                     IMP_ASK, DMP_INT, 0, AM_UP, 1, RT_16, 50, 0, 0, 0, {0}, 120, 50, 1, 0, 0, 0, {0}, 0, 0, 0, 0};
+                                     IMP_ASK, DMP_INT, 0, AM_UP, 1, RT_16, 50, 0, 0, 0, {0}, 120, 50, 1, 0, 0, 0, 8, 0, 0, 0, 0};
 static sq_sys_t sys, sys_saved;
 static uint32_t sys_due;
 
@@ -47,6 +47,7 @@ static void sys_apply(void)                     /* the engine's part, at boot an
     sq_event(EV_SET, SET_BENDR, 0, sys.bend);
     sq_event(EV_CC, 7, sys.volume, 0);
     sq_event(EV_SET, SET_OUT, 0, sys.outclean);
+    sq_event(EV_SET, SET_VOICES, 0, sys.voices);
 #ifndef OBV_HOST
     uac_off = sys.usboff;
 #endif
@@ -68,6 +69,7 @@ static void sys_boot(void)
     if (sys.nchord > 8u) sys.nchord = 0;
     if (sys.arate >= NRATE) sys.arate = RT_16;
     if (sys.scale >= NSCALE) sys.scale = 0;
+    if (sys.voices < 6u || sys.voices > 8u) sys.voices = 8;
     sq_cur = sys.prog % NPROG_ALL;
     ui_oct = sys.oct < -3 ? -3 : sys.oct > 3 ? 3 : sys.oct;
     sys_apply();

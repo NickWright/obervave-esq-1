@@ -139,7 +139,8 @@ static const fld_t F_MST_[] = {
     {"PRESS", "PRESSURE CURVE", K_ENUM, 0, 3, F_S(prscrv), PCRV_NAME},
     {"USB", "AUDIO TO THE COMPUTER", K_ENUM, 0, 1, F_S(usboff), USB_NAME},
     {"OUT", "OUTPUT STAGE", K_ENUM, 0, 1, F_S(outclean), OUT_NAME},
-    {"LOOK", "SCREEN LOOK", K_ENUM, 0, 1, F_S(look), LOOK_NAME}};
+    {"LOOK", "SCREEN LOOK", K_ENUM, 0, 1, F_S(look), LOOK_NAME},
+    {"VOICE", "VOICES (FEWER: LESS CPU)", K_U8, 6, 8, F_S(voices)}};
 static const fld_t F_TUNE_[] = {                /* TUNING: a scale, on a key */
     {"SCALE", "SCALE", K_ENUM, 0, 4, F_S(scale), SCALE_NAME}, {"KEY", "ITS KEY", K_ENUM, 0, 11, F_S(skey), KEYN_NAME}};
 static const fld_t F_MIDI_[] = {
@@ -157,7 +158,7 @@ static const page_t PAGES[NPG] = {
     [PG_MODES] = {"MODES", 1, 5, 6, F_MD_}, [PG_SPLIT] = {"SPLIT/LAYER", 1, 4, 4, F_SP_},
     [PG_XMOD] = {"MOD+", 1, 3, 4, F_XM_}, [PG_TUNE] = {"TUNING", 1, 2, 0, F_TUNE_},
     [PG_PERF] = {"PERFORM", 1, 4, 4, F_PERF_}, [PG_ARP] = {"ARP", 1, 5, 4, F_ARP_}, [PG_SEQ] = {"SEQ", 1, 5, 5, F_SEQ_},
-    [PG_MASTER] = {"MASTER", 1, 3, 6, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
+    [PG_MASTER] = {"MASTER", 1, 3, 7, F_MST_}, [PG_MIDI] = {"MIDI", 1, 3, 2, F_MIDI_},
     [PG_STORE] = {"STORAGE", 1, 2, 0, F_STO_}};
 
 /* (R4.1) screens: each page in screens of at most four fields, one under each knob (KNOB 1-4 left to right); SELECT
@@ -166,7 +167,7 @@ static const char *const SCR[NPG] = {
     [PG_PROG] = "", [PG_OSC] = "0123/4567/89", [PG_DCA] = "01/2345", [PG_FILT] = "012/3456/78", [PG_DCA4] = "0123",
     [PG_ENV] = "0123/5678/49a", [PG_LFO] = "0123/4567/89a", [PG_MODES] = "0123/4567/89a", [PG_SPLIT] = "0123/4567",
     [PG_XMOD] = "012/345/6", [PG_PERF] = "0123/4567", [PG_ARP] = "0123/4567/8", [PG_SEQ] = "0123/5678/49",
-    [PG_MASTER] = "012/3456/78", [PG_MIDI] = "012/34", [PG_STORE] = "01", [PG_TUNE] = "01"};
+    [PG_MASTER] = "012/3456/789", [PG_MIDI] = "012/34", [PG_STORE] = "01", [PG_TUNE] = "01"};
 static uint32_t ed_scr_n(uint32_t pg)           /* the page's screens */
 {
     const char *c = SCR[pg];
@@ -378,7 +379,8 @@ static void ed_turn(uint32_t i, int32_t d)
         if (old.arp != sys.arp || old.latch != sys.latch || old.chord != sys.chord) pl_reset();
         if (old.clock != sys.clock) seq_stop();
         if (old.tune != sys.tune || old.bend != sys.bend || old.volume != sys.volume || old.usboff != sys.usboff ||
-            old.outclean != sys.outclean || old.tempo != sys.tempo || old.scale != sys.scale || old.skey != sys.skey)
+            old.outclean != sys.outclean || old.tempo != sys.tempo || old.scale != sys.scale || old.skey != sys.skey ||
+            old.voices != sys.voices)
             sys_apply();
         if (old.look != sys.look) ui_set_look(sys.look);
         return;

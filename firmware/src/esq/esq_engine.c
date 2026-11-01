@@ -1162,33 +1162,35 @@ ESQ_COLD static void esq_voice_release(esq_synth_t *s, esq_voice_t *v)
 }
 
 #if ESQ_WHOLE                             /* (the whole-synth API: a host of the per-voice API has no use for it) */
+/* (R6) the voices it may use: VOICES (esq_synth_t.nvoice, 0: all) */
+static int esq_nv(const esq_synth_t *s) { return s->nvoice && s->nvoice < ESQ_NVOICE ? s->nvoice : ESQ_NVOICE; }
 static esq_voice_t *esq_voice_pick(esq_synth_t *s, int note)
 {
     esq_voice_t *best = 0;
-    int i, same = 0;
+    int i, same = 0, nv = esq_nv(s);
     if (s->patch.modes.vc)                                /* VC: the key takes its voice back */
-        for (i = 0; i < ESQ_NVOICE; i++)
+        for (i = 0; i < nv; i++)
             if (s->v[i].active && s->v[i].note == note)
                 return &s->v[i];
-    for (i = 0; i < ESQ_NVOICE; i++)                      /* VC off: at most two voices on one key */
+    for (i = 0; i < nv; i++)                      /* VC off: at most two voices on one key */
         if (s->v[i].active && s->v[i].note == note && ++same >= 2)
             break;
     if (same >= 2) {
-        for (i = 0; i < ESQ_NVOICE; i++)
+        for (i = 0; i < nv; i++)
             if (s->v[i].active && s->v[i].note == note && (!best || s->v[i].age < best->age))
                 best = &s->v[i];
         return best;
     }
-    for (i = 0; i < ESQ_NVOICE; i++)
+    for (i = 0; i < nv; i++)
         if (!s->v[i].active)
             return &s->v[i];
-    for (i = 0; i < ESQ_NVOICE; i++)                      /* oldest released */
+    for (i = 0; i < nv; i++)                      /* oldest released */
         if (!s->v[i].gate && (!best || s->v[i].age < best->age))
             best = &s->v[i];
     if (best)
         return best;
     best = &s->v[0];
-    for (i = 1; i < ESQ_NVOICE; i++)                      /* oldest */
+    for (i = 1; i < nv; i++)                      /* oldest */
         if (s->v[i].age < best->age)
             best = &s->v[i];
     return best;
@@ -1197,8 +1199,9 @@ static esq_voice_t *esq_voice_pick(esq_synth_t *s, int note)
 /* (R5) unison: voices a note (1..4), and voice k of n's detune (1/256 semitone) and pan spread */
 static uint32_t esq_uni(const esq_synth_t *s)
 {
-    uint32_t n = s->patch.x.uni;
-    return n < 2u ? 1u : n > 4u ? 4u : n;
+    uint32_t n = s->patch.x.uni, nv = (uint32_t)esq_nv(s);
+    n = n < 2u ? 1u : n > 4u ? 4u : n;
+    return n > nv ? nv : n;
 }
 static void esq_uni_set(const esq_synth_t *s, esq_voice_t *v, uint32_t k, uint32_t n)
 {
@@ -1212,7 +1215,7 @@ static esq_voice_t *esq_voice_pick_uni(esq_synth_t *s, esq_voice_t *const *used,
     esq_voice_t *best = 0;
     int i, pass;
     for (pass = 0; pass < 3 && !best; pass++)
-        for (i = 0; i < ESQ_NVOICE; i++) {
+        for (i = 0; i < esq_nv(s); i++) {
             esq_voice_t *v = &s->v[i];
             uint32_t u, taken = 0;
             for (u = 0; u < nused; u++) taken |= used[u] == v;
