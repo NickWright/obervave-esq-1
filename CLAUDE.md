@@ -36,7 +36,7 @@ NickWright/obervave-esq-1 (the name is historical). Branch `esq1` keeps the earl
 | R4 (built) | CPU (the engine at -O2, its sample loop in RAM); the button layout below; PERFORM; system pages MASTER, MIDI, STORAGE; IMPORT asks; arpeggiator, latch, chord memory; a sequencer (8 patterns) |
 | R4.1 (built) | COMPARE as the original (C*, the edit buffer kept); screens of four fields; knob acceleration; CPU meter split, waves in RAM, USB AUDIO OFF; OUT ORIG / CLEAN; SysEx dumps survive other senders |
 | R5 (built) | MODERN look (graphs); the extension block: LFO shapes, sync, one-shot, looping envelopes, Q mod, wave scan, unison, DRIFT, MOD+ (sources RAND / ALT / RR4 / ZONE to pitch, cutoff, Q, level, pan, LFO1 rate, scan), TUNING, SPLIT / LAYER played, NRPN / CC, MUTATE / RANDOM |
-| R6 | CPU on the device, factory programs, 1.0 |
+| R6 (built) | CPU: measured on the device 180 us + ~380 us a voice (the engine's own cost, as Felucca's), lossless trims, MASTER VOICES 6 / 7 / 8; SQ1D's own factory programs (CART B); 1.0 waits for device testing and the hub's identity check (1.0 = FM-1_9710) |
 
 Not planned before 1.0: the ESQ-1's sequencer, effects.
 
@@ -158,6 +158,18 @@ Not planned before 1.0: the ESQ-1's sequencer, effects.
   73 72 5. MUTATE / RANDOM `ed_shake`. MODERN: `ui_set_look` palette, graphs in `sq_ui_page.h` (ENV, LFO, OSC).
 - Settings 48 bytes ("1D1S"; R4's 44 carried over): + scale, skey, look.
 - Host: `tests/sq1d_r41.txt`, `tests/sq1d_r5.txt`.
+
+## R6 (2026-11-01)
+
+- CPU on the device (the owner, R4.1): 0 keys 180 + 13 us, 1 key 575 + 36, 4 keys 1696 + 107, 8 keys 3200 + 200: about
+  380 us a voice a 256-frame render (Felucca's 169 us is per 128 frames: the same engine cost; Felucca capped its ESQ
+  voices at 6). Lossless trims in the per-sample loop (oscillator state in locals, settled VCA / pan smoothing
+  skipped: bit-identical on the host). MASTER VOICES 6 / 7 / 8 (`esq_synth_t.nvoice`, `esq_nv`; `sq_vmax` for all three
+  synths; settings byte `voices`, 0 = 8).
+- `sq_factory.h`: SQ1D's own programs (23: SQ1D, UNISAW, SCANWV, DRUNKF, S&HBLP, LOOPEV, RRPLUK, RNDPAN, ZONEKB, QSWEEP,
+  AMSYNC, ZAPPER, VELBRS, TAPEKY, CHORGN, STRNGS, VOXSCN, SUBBAS, ALTBEL, WINDS, GATSEQ, BENDLD, WIDEPD), CART B's
+  defaults (`set_defaults(2)`); STORAGE FACT (SAVE twice within 3 s) writes them into CART B (`factory_restore`).
+- Host: `tests/sq1d_r6.txt` (each program's level measured).
 
 ## The wave bank in flash (Phase 2, 2026-10-30)
 

@@ -7,10 +7,11 @@ The voice is a model of the original's voice hardware running its OS 3.5 control
 factory programs come from **your own ROM dumps**, sent to the FM-1's flash once; the firmware holds no ROM data and
 plays generated stand-in waves without them.
 
-> **Status: R5 (development).** Programs in INT, CART A, CART B and ROM; every voice page of the original, edited as
+> **Status: R6 (release candidate).** Programs in INT, CART A, CART B and ROM; every voice page of the original, edited as
 > on it, plus extension fields (LFO shapes and tempo sync, looping envelopes, Q modulation, wave scanning, unison,
 > drift, MOD+, tuning); SPLIT / LAYER; COMPARE as the original; an arpeggiator, latch, chord memory and an 8-pattern
-> step sequencer; system pages; VFD or MODERN look; NRPN for every program field.
+> step sequencer; system pages; VFD or MODERN look; NRPN for every program field; 23 factory programs of its own
+> in CART B; MASTER VOICES 6 / 7 / 8.
 
 ## Install
 
